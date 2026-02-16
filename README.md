@@ -50,8 +50,10 @@ To allow the sidecar to access the API without storing credentials:
 | `QBIT_HOST` | qBittorrent API URL | `http://localhost:8080` |
 | `QBIT_USER` | Web UI Username (Optional) | `""` |
 | `QBIT_PASS` | Web UI Password (Optional) | `""` |
-| `NTFY_TOPIC` | Ntfy Topic Name | **Required** |
+| `NTFY_TOPIC` | Ntfy Topic Name (**REQUIRED**) | `""` |
 | `NTFY_SERVER` | Ntfy Server URL | `https://ntfy.sh` |
+| `NTFY_USER` | Ntfy Username (Optional) | `""` |
+| `NTFY_PASS` | Ntfy Password (Optional) | `""` |
 | `NTFY_PRIORITY_PROGRESS` | Priority for progress updates | `2` (Low) |
 | `NTFY_PRIORITY_COMPLETE` | Priority for completion alerts | `3` (Default) |
 | `NOTIFY_COMPLETE` | Send notification on completion | `true` |

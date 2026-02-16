@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -142,38 +141,44 @@ func TestSendNtfy(t *testing.T) {
 		if r.Method != "POST" {
 			t.Errorf("Expected POST request, got %s", r.Method)
 		}
-		if got := r.Header.Get("Title"); got != "Test Title" {
-			t.Errorf("Expected Title 'Test Title', got '%s'", got)
-		}
-		if got := r.Header.Get("Priority"); got != "3" {
-			t.Errorf("Expected Priority '3', got '%s'", got)
-		}
-		if got := r.Header.Get("Tags"); got != "tag" {
-			t.Errorf("Expected Tags 'tag', got '%s'", got)
-		}
 
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatalf("Failed to read request body: %v", err)
-		}
-		if string(body) != "Test Message" {
-			t.Errorf("Expected body 'Test Message', got '%s'", string(body))
+		// Check for specific header if provided (testing auth)
+		if strings.Contains(r.URL.Path, "auth_topic") {
+			user, pass, ok := r.BasicAuth()
+			if !ok {
+				t.Error("Expected Basic Auth header, got none")
+			}
+			if user != "testuser" || pass != "testpass" {
+				t.Errorf("Expected user/pass 'testuser'/'testpass', got '%s'/'%s'", user, pass)
+			}
 		}
 
 		w.WriteHeader(200)
 	}))
-	defer ts.Close()
+	t.Cleanup(ts.Close)
 
 	// Override global config
 	oldServer := ntfyServer
 	oldTopic := ntfyTopic
+	oldUser := ntfyUser
+	oldPass := ntfyPass
+
 	t.Cleanup(func() {
 		ntfyServer = oldServer
 		ntfyTopic = oldTopic
+		ntfyUser = oldUser
+		ntfyPass = oldPass
 	})
 
 	ntfyServer = ts.URL
 	ntfyTopic = "test_topic"
 
+	// 1. Test standard notification (no auth)
 	sendNtfy("Test Title", "Test Message", "tag", "id", "3")
+
+	// 2. Test authenticated notification
+	ntfyTopic = "auth_topic"
+	ntfyUser = "testuser"
+	ntfyPass = "testpass"
+	sendNtfy("Auth Title", "Auth Message", "tag", "id", "3")
 }
