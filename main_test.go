@@ -61,7 +61,7 @@ func TestGetTorrentInfo(t *testing.T) {
 			name: "Success",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(200)
-				fmt.Fprintln(w, `[{"hash":"123","name":"Test Torrent","progress":0.5,"eta":60,"dlspeed":1024,"state":"downloading"}]`)
+				_, _ = fmt.Fprintln(w, `[{"hash":"123","name":"Test Torrent","progress":0.5,"eta":60,"dlspeed":1024,"state":"downloading"}]`)
 			},
 			expectError:   false,
 			expectTorrent: true,
@@ -71,7 +71,7 @@ func TestGetTorrentInfo(t *testing.T) {
 			name: "Torrent Not Found (Empty Array)",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(200)
-				fmt.Fprintln(w, `[]`)
+				_, _ = fmt.Fprintln(w, `[]`)
 			},
 			expectError:   false,
 			expectTorrent: false,
@@ -80,7 +80,7 @@ func TestGetTorrentInfo(t *testing.T) {
 			name: "API Error (500)",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(500)
-				fmt.Fprintln(w, `Internal Server Error`)
+				_, _ = fmt.Fprintln(w, `Internal Server Error`)
 			},
 			expectError:   true,
 			expectTorrent: false,
@@ -89,7 +89,7 @@ func TestGetTorrentInfo(t *testing.T) {
 			name: "Malformed JSON",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(200)
-				fmt.Fprintln(w, `[{"hash":... invalid json ...`)
+				_, _ = fmt.Fprintln(w, `[{"hash":... invalid json ...`)
 			},
 			expectError:   true,
 			expectTorrent: false,

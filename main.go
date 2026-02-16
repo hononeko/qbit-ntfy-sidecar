@@ -103,7 +103,7 @@ func startupScan() {
 
 		if resp.StatusCode != 200 {
 			log.Printf("Startup: API returned %d. Retrying in 10s...", resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			time.Sleep(10 * time.Second)
 			continue
 		}
@@ -111,11 +111,11 @@ func startupScan() {
 		var torrents []Torrent
 		if err := json.NewDecoder(resp.Body).Decode(&torrents); err != nil {
 			log.Printf("Startup: JSON decode error (%v). Retrying in 10s...", err)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			time.Sleep(10 * time.Second)
 			continue
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// 3. Sync
 		log.Printf("Startup: Found %d active downloads. Syncing...", len(torrents))
@@ -139,7 +139,7 @@ func startupScan() {
 
 func handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "Method Not Allowed", 405)
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -152,7 +152,7 @@ func handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 	mutex.Lock()
 	if activeMonitors[hash] {
 		mutex.Unlock()
-		fmt.Fprintf(w, "Already tracking %s", hash)
+		_, _ = fmt.Fprintf(w, "Already tracking %s", hash)
 		return
 	}
 	activeMonitors[hash] = true
@@ -161,7 +161,7 @@ func handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 	go trackTorrent(hash)
 
 	w.WriteHeader(200)
-	fmt.Fprintf(w, "Tracking started for %s", hash)
+	_, _ = fmt.Fprintf(w, "Tracking started for %s", hash)
 }
 
 func trackTorrent(hash string) {
