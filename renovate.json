@@ -1,0 +1,16 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits"
+  ],
+  "dependencyDashboard": true,
+  "timezone": "Europe/Chisinau",
+  "rebaseWhen": "behind-base-branch",
+  "labels": [
+    "renovate",
+    "dependencies"
+  ],
+  "automergeType": "pr",
+  "prHeader": "## 🤖 Renovate: Dependency Maintenance"
+}
