@@ -252,7 +252,7 @@ func sendNtfy(title, msg, tag, id, priority string) {
 		log.Printf("Failed to send ntfy notification: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 }
 
 func getTorrentInfo(client *http.Client, hash string) (*Torrent, error) {
@@ -260,7 +260,7 @@ func getTorrentInfo(client *http.Client, hash string) (*Torrent, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("qBit API returned status: %d", resp.StatusCode)
@@ -286,7 +286,7 @@ func login(client *http.Client) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 || strings.Contains(string(body), "Fails.") {
