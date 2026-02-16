@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,9 +11,11 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -76,7 +79,37 @@ func main() {
 	// 3. Run Startup Scan (Background)
 	go startupScan()
 
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	server := &http.Server{
+		Addr:         ":" + port,
+		Handler:      nil, // DefaultServeMux
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  15 * time.Second,
+	}
+
+	// 4. Graceful Shutdown
+	stop := make(chan os.Signal, 1)
+	// SIGINT (Ctrl+C) and SIGTERM (Kubernetes/Docker stop)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	<-stop
+	log.Println("Shutting down sidecar...")
+
+	// Create a context with timeout for shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Sidecar exited gracefully")
 }
 
 func startupScan() {
@@ -175,8 +208,6 @@ func trackTorrent(hash string) {
 		mutex.Unlock()
 	}()
 
-	log.Printf("[%s] Monitor started", hash)
-
 	// Per-routine client to handle independent auth sessions cleanly
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
@@ -191,6 +222,15 @@ func trackTorrent(hash string) {
 
 	ticker := time.NewTicker(pollInt)
 	defer ticker.Stop()
+
+	// Fetch info immediately to get the name for logging
+	// We'll retry in the loop if this fails, but it's nice to log early if possible
+	startInfo, err := getTorrentInfo(client, hash)
+	if err == nil && startInfo != nil {
+		log.Printf("[%s] Monitor started for: %s", hash, startInfo.Name)
+	} else {
+		log.Printf("[%s] Monitor started (name pending...)", hash)
+	}
 
 	lastPct := -1
 
@@ -216,6 +256,7 @@ func trackTorrent(hash string) {
 		// Check Completion
 		// qBittorrent states: upload, uploading, upLO, pausedUP, completed, etc.
 		if pct >= 100 || strings.Contains(t.State, "up") || t.State == "completed" {
+			log.Printf("[%s] Torrent finished (%s). Stopping monitor.", hash, t.Name)
 			if notifyComplete {
 				sendComplete(t)
 			}

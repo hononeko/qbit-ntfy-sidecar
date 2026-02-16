@@ -62,3 +62,15 @@ spec:
               value: "bar" # or "percent"
             - name: NTFY_PRIORITY_PROGRESS
               value: "2"
+
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532 # nonroot user from distroless
