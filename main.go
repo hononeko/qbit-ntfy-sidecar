@@ -22,6 +22,8 @@ var (
 	qbitUser       string
 	qbitPass       string
 	ntfyServer     string
+	ntfyUser       string
+	ntfyPass       string
 	ntfyTopic      string
 	ntfyPrioProg   string
 	ntfyPrioComp   string
@@ -55,6 +57,8 @@ func main() {
 	qbitPass = getEnv("QBIT_PASS", "")
 
 	ntfyServer = strings.TrimRight(getEnv("NTFY_SERVER", "https://ntfy.sh"), "/")
+	ntfyUser = getEnv("NTFY_USER", "")
+	ntfyPass = getEnv("NTFY_PASS", "")
 	ntfyTopic = mustGetEnv("NTFY_TOPIC")
 	ntfyPrioProg = getEnv("NTFY_PRIORITY_PROGRESS", "2") // Default: Low (no sound/vibe)
 	ntfyPrioComp = getEnv("NTFY_PRIORITY_COMPLETE", "3") // Default: Default (sound/vibe)
@@ -67,7 +71,7 @@ func main() {
 
 	port := "9090"
 	log.Printf("Sidecar listening on :%s", port)
-	log.Printf("Config: Host=%s Auth=%v Topic=%s/%s", qbitHost, qbitUser != "", ntfyServer, ntfyTopic)
+	log.Printf("Config: Host=%s Auth=%v Topic=%s/%s NtfyAuth=%v", qbitHost, qbitUser != "", ntfyServer, ntfyTopic, ntfyUser != "")
 
 	// 3. Run Startup Scan (Background)
 	go startupScan()
@@ -246,6 +250,10 @@ func sendNtfy(title, msg, tag, id, priority string) {
 	req.Header.Set("Tags", tag)
 	req.Header.Set("Priority", priority)
 	req.Header.Set("X-Notification-ID", id) // Updates in-place
+
+	if ntfyUser != "" && ntfyPass != "" {
+		req.SetBasicAuth(ntfyUser, ntfyPass)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
