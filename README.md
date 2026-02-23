@@ -9,6 +9,11 @@ A lightweight Go sidecar for Kubernetes to monitor qBittorrent downloads and sen
 - **Completion Alerts**: Configurable priority notification when download finishes.
 - **Flexible Auth**: Supports both authenticated and localhost-bypass access to qBittorrent.
 
+## ⚠️ Security Warning
+**Do NOT expose the sidecar's port (`9090`) to the Internet.**
+The `/track` endpoint does not implement authentication. If exposed to the internet or untrusted users on a LAN, a malicious actor could abuse the endpoint by spamming it with requests containing random torrent hashes. This would cause the sidecar to spawn excessive background processes and flood your qBittorrent instance with API and login requests, leading to a Denial of Service (DoS) via resource exhaustion. Access to the sidecar should be strictly limited to the local container network.
+
+
 ## Installation
 
 ### Option A: Kubernetes (Recommended)
