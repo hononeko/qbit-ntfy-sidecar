@@ -6,7 +6,13 @@ metadata:
     app: qbittorrent
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: qbittorrent
   template:
+    metadata:
+      labels:
+        app: qbittorrent
     spec:
       containers:
         # --- Main Container: qBittorrent ---
@@ -25,7 +31,7 @@ spec:
 
         # --- Sidecar Container: Ntfy Monitor ---
         - name: ntfy-sidecar
-          image: ghcr.io/vehkiya/qbit-ntfy-sidecar:latest
+          image: ghcr.io/hononeko/qbit-ntfy-sidecar:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 9090
