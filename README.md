@@ -1,5 +1,8 @@
 # qBit-Ntfy Sidecar
 
+[![GitHub Release](https://img.shields.io/github/v/release/hononeko/qbit-ntfy-sidecar)](https://github.com/hononeko/qbit-ntfy-sidecar/pkgs/container/qbit-ntfy-sidecar)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/hononeko/qbit-ntfy-sidecar/main.yml)](https://github.com/hononeko/qbit-ntfy-sidecar/actions/workflows/main.yml)
+
 A lightweight Go sidecar for Kubernetes to monitor qBittorrent downloads and send real-time progress updates to [ntfy.sh](https://ntfy.sh) or a self-hosted ntfy server.
 
 ## Features
