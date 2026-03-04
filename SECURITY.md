@@ -11,8 +11,10 @@ Currently, only the latest release of `qbit-ntfy-sidecar` is supported with secu
 
 ## ⚠️ Access Security Warning
 
-**Do NOT expose the sidecar's port (`9090`) to the Internet.**
-The `/track` endpoint does not implement authentication. Exposure to untrusted networks may allow malicious actors to spam the endpoint, causing a Denial of Service (DoS) via resource exhaustion in your qBittorrent instance. Keep access strictly limited to the local container network.
+**The sidecar defaults to denying all requests to `/track`.**
+You **must** configure the `ALLOWED_SUBNETS` environment variable (e.g., `ALLOWED_SUBNETS=10.0.0.0/8,192.168.1.0/24`) to allow qBittorrent to trigger notifications.
+
+The `/track` endpoint does not implement authentication. Exposure to untrusted networks without proper IP filtering may allow malicious actors to spam the endpoint, causing a Denial of Service (DoS) via resource exhaustion in your qBittorrent instance. Keep access strictly limited to the local container network and authorized subnets.
 
 ## Reporting a Vulnerability
 

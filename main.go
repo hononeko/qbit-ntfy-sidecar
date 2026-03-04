@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/cookiejar"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/signal"
@@ -42,6 +43,7 @@ var (
 	appCtx         context.Context
 	appCancel      context.CancelFunc
 	appWg          sync.WaitGroup
+	allowedSubnets []netip.Prefix
 )
 
 // Torrent struct for JSON parsing
@@ -77,8 +79,35 @@ func main() {
 	}
 	pollInt = time.Duration(pollIntVal) * time.Second
 
+	// Parse ALLOWED_SUBNETS
+	subnetEnv := getEnv("ALLOWED_SUBNETS", "")
+	if subnetEnv != "" {
+		for _, s := range strings.Split(subnetEnv, ",") {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			// If it's just an IP without a CIDR mask, format it as a single-IP subnet
+			if !strings.Contains(s, "/") {
+				if strings.Contains(s, ":") { // IPv6
+					s = s + "/128"
+				} else { // IPv4
+					s = s + "/32"
+				}
+			}
+			prefix, err := netip.ParsePrefix(s)
+			if err != nil {
+				log.Printf("Warning: Invalid subnet format %q: %v. Ignoring.", s, err)
+				continue
+			}
+			allowedSubnets = append(allowedSubnets, prefix)
+		}
+	} else {
+		log.Println("WARNING: ALLOWED_SUBNETS is not set. The /track endpoint will deny all requests.")
+	}
+
 	// 2. Start Trigger Server
-	http.HandleFunc("/track", handleTrackRequest)
+	http.HandleFunc("/track", ipFilterMiddleware(handleTrackRequest))
 
 	port := "9090"
 	log.Printf("Sidecar listening on :%s", port)
@@ -248,6 +277,45 @@ func handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(200)
 	_, _ = fmt.Fprintf(w, "Tracking started for %s", hash)
+}
+
+func ipFilterMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var clientIP netip.Addr
+
+		// Try to parse as IP:port (standard for r.RemoteAddr)
+		if addrPort, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
+			clientIP = addrPort.Addr()
+		} else {
+			// Fallback: it might be just an IP without a port (e.g. from tests or proxies)
+			cleanIP := strings.Trim(r.RemoteAddr, "[]")
+			parsedIP, err := netip.ParseAddr(cleanIP)
+			if err != nil {
+				http.Error(w, "Forbidden: Invalid IP Address", http.StatusForbidden)
+				return
+			}
+			clientIP = parsedIP
+		}
+
+		// Ensure IPv4 mapped IPv6 addresses (e.g., ::ffff:192.168.1.1) map back properly
+		clientIP = clientIP.Unmap()
+
+		allowed := false
+		for _, subnet := range allowedSubnets {
+			if subnet.Contains(clientIP) {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
+			log.Printf("Blocked unauthorized request from %s", r.RemoteAddr)
+			http.Error(w, "Forbidden: Unauthorized IP", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	}
 }
 
 func trackTorrent(hash string) {
