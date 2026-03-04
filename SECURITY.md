@@ -20,7 +20,7 @@ I take the security of `qbit-ntfy-sidecar` seriously. If you discover a security
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via [GitHub Security Advisories](https://github.com/vehkiya/qbit-ntfy-sidecar/security/advisories/new) or by reaching out to the repository owner directly.
+Instead, please report them via [GitHub Security Advisories](https://github.com/hononeko/qbit-ntfy-sidecar/security/advisories/new) or by reaching out to the repository owner directly.
 
 Please include the following information in your report:
 
