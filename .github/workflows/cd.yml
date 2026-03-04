@@ -8,10 +8,19 @@ env:
   IMAGE_NAME: qbit-ntfy-sidecar
 
 jobs:
-  build-and-push:
+  validate:
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+      packages: read
+    with:
+      image_tag: cd-test
+
+  release:
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed for creating tags
+      contents: write # Needed for creating tags and releases
       packages: write
       attestations: write
       id-token: write
@@ -22,27 +31,13 @@ jobs:
         with:
           fetch-depth: 0 # Needed for semantic-version to calculate version
 
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.26.0"
-          cache: true
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9.2.0
-        with:
-          version: v2.10.1
-
-      - name: Run Unit Tests
-        run: go test -v ./...
-
       - name: Calculate Semantic Version
         id: version
         uses: PaulHatch/semantic-version@v6.0.1
         with:
           change_path: "."
           bump_each_commit: false
-          tag_prefix: "v"
+          tag_prefix: ""
           major_pattern: "/!:|BREAKING CHANGE:/"
           minor_pattern: "/feat(\\(.+\\))?:/"
           version_format: "${major}.${minor}.${patch}"
@@ -51,30 +46,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry (GHCR)
-        uses: docker/login-action@v4
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build Docker image for scanning
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          load: true
-          push: false
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:scan
-          cache-from: type=gha
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.34.2
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:scan
-          format: "table"
-          exit-code: "1"
-          ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
