@@ -16,8 +16,10 @@ A lightweight Go sidecar for Kubernetes to monitor qBittorrent downloads and sen
 
 ## ⚠️ Security Warning
 
-**Do NOT expose the sidecar's port (`9090`) to the Internet.**
-The `/track` endpoint does not implement authentication. If exposed to the internet or untrusted users on a LAN, a malicious actor could abuse the endpoint by spamming it with requests containing random torrent hashes. This would cause the sidecar to spawn excessive background processes and flood your qBittorrent instance with API and login requests, leading to a Denial of Service (DoS) via resource exhaustion. Access to the sidecar should be strictly limited to the local container network.
+**The sidecar defaults to denying all requests to `/track`.**
+You **must** configure the `ALLOWED_SUBNETS` environment variable (e.g., `ALLOWED_SUBNETS=10.0.0.0/8,192.168.1.0/24`) to allow qBittorrent to trigger notifications.
+
+The `/track` endpoint does not implement authentication. If exposed to the internet or untrusted users on a LAN without proper IP filtering, a malicious actor could abuse the endpoint by spamming it with requests containing random torrent hashes. This would cause the sidecar to spawn excessive background processes and flood your qBittorrent instance with API and login requests, leading to a Denial of Service (DoS) via resource exhaustion. Access to the sidecar should be strictly limited to the local container network and authorized subnets.
 
 ## Installation
 
@@ -42,6 +44,8 @@ containers:
         cpu: "100m"
         memory: "128Mi"
     env:
+      - name: ALLOWED_SUBNETS
+        value: "10.0.0.0/8" # Pod network subnet
       - name: QBIT_HOST
         value: "http://localhost:8080"
       - name: NTFY_TOPIC
@@ -76,6 +80,7 @@ services:
     container_name: qbit-ntfy-sidecar
     network_mode: service:qbittorrent # Joins qbit's network
     environment:
+      - ALLOWED_SUBNETS=127.0.0.1,::1
       - QBIT_HOST=http://localhost:8080 # default works since it shares qbit's network
       - NTFY_TOPIC=my_downloads
       - NTFY_SERVER=https://ntfy.sh
@@ -101,6 +106,7 @@ services:
     networks:
       - qbit-net
     environment:
+      - ALLOWED_SUBNETS=172.16.0.0/12 # Adjust to your Docker network subnet
       - QBIT_HOST=http://qbittorrent:8080 # Use service name for host
       - NTFY_TOPIC=my_downloads
       - NTFY_SERVER=https://ntfy.sh
@@ -119,6 +125,7 @@ Make sure the sidecar can reach the qBittorrent container (e.g., share a network
 docker run -d \
   --name qbit-ntfy-sidecar \
   --network=container:qbittorrent \
+  -e ALLOWED_SUBNETS=127.0.0.1,::1 \
   -e QBIT_HOST=http://localhost:8080 \
   -e NTFY_TOPIC=my_downloads \
   -e PROGRESS_FORMAT=bar \
@@ -160,6 +167,7 @@ The sidecar is event-driven. It needs to know _when_ to start monitoring a new t
 
 | Variable                 | Description                     | Default                 |
 | ------------------------ | ------------------------------- | ----------------------- |
+| `ALLOWED_SUBNETS`        | Subnets allowed to hit `/track` | `""` (Deny All)         |
 | `QBIT_HOST`              | qBittorrent API URL             | `http://localhost:8080` |
 | `QBIT_USER`              | Web UI Username (Optional)      | `""`                    |
 | `QBIT_PASS`              | Web UI Password (Optional)      | `""`                    |

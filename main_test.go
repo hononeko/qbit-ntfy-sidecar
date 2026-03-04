@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 )
@@ -211,4 +212,122 @@ func TestSendNtfy(t *testing.T) {
 	ntfyUser = "testuser"
 	ntfyPass = "testpass"
 	sendNtfy("Auth Title", "Auth Message", "tag", "id", "3")
+}
+
+func parseSubnets(subnets []string) []netip.Prefix {
+	var parsed []netip.Prefix
+	for _, s := range subnets {
+		if !strings.Contains(s, "/") {
+			if strings.Contains(s, ":") {
+				s += "/128"
+			} else {
+				s += "/32"
+			}
+		}
+		prefix, err := netip.ParsePrefix(s)
+		if err == nil {
+			parsed = append(parsed, prefix)
+		}
+	}
+	return parsed
+}
+
+func TestIPFilterMiddleware(t *testing.T) {
+	tests := []struct {
+		name           string
+		allowedSubnets []string
+		remoteAddr     string
+		expectedStatus int
+	}{
+		{
+			name:           "Empty config (Deny All)",
+			allowedSubnets: []string{},
+			remoteAddr:     "192.168.1.5:1234",
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "IPv4 Allowed Subnet",
+			allowedSubnets: []string{"192.168.1.0/24"},
+			remoteAddr:     "192.168.1.100:4567",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "IPv4 Denied Subnet",
+			allowedSubnets: []string{"10.0.0.0/8"},
+			remoteAddr:     "192.168.1.100:4567",
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "IPv4 Single IP Allowed",
+			allowedSubnets: []string{"192.168.1.5"},
+			remoteAddr:     "192.168.1.5:8080",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "IPv4 Single IP Denied",
+			allowedSubnets: []string{"192.168.1.5"},
+			remoteAddr:     "192.168.1.6:8080",
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "IPv6 Allowed Subnet",
+			allowedSubnets: []string{"2001:db8::/32"},
+			remoteAddr:     "[2001:db8::1]:1234",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "IPv6 Denied Subnet",
+			allowedSubnets: []string{"2001:db8::/32"},
+			remoteAddr:     "[2001:0db9::1]:1234", // Note the 9
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "IPv6 Single IP Allowed (with brackets from r.RemoteAddr)",
+			allowedSubnets: []string{"fe80::1"},
+			remoteAddr:     "[fe80::1]:1234",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "IPv6 Localhost Allowed",
+			allowedSubnets: []string{"::1"},
+			remoteAddr:     "[::1]:8080",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "Invalid RemoteAddr format",
+			allowedSubnets: []string{"192.168.1.0/24"},
+			remoteAddr:     "notanip",
+			expectedStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Backup global subnets
+			oldSubnets := allowedSubnets
+			t.Cleanup(func() { allowedSubnets = oldSubnets })
+
+			// Populate allowedSubnets
+			allowedSubnets = parseSubnets(tt.allowedSubnets)
+
+			// Setup dummy handler to wrap
+			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("OK"))
+			})
+
+			middleware := ipFilterMiddleware(nextHandler)
+
+			// Execute mock request
+			req := httptest.NewRequest("POST", "/track?hash=123", nil)
+			req.RemoteAddr = tt.remoteAddr
+
+			rec := httptest.NewRecorder()
+			middleware.ServeHTTP(rec, req)
+
+			if rec.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, rec.Code)
+			}
+		})
+	}
 }
