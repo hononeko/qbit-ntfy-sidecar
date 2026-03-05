@@ -123,7 +123,7 @@ func trackTorrent(hash string) {
 	// Login only if credentials are provided
 	if qbitUser != "" && qbitPass != "" {
 		if err := login(client); err != nil {
-			log.Printf("[%s] Auth failed: %v", hash, err)
+			log.Printf("[%q] Auth failed: %v", hash, err)
 			return
 		}
 	}
@@ -135,9 +135,9 @@ func trackTorrent(hash string) {
 	// We'll retry in the loop if this fails, but it's nice to log early if possible
 	startInfo, err := getTorrentInfo(client, hash)
 	if err == nil && startInfo != nil {
-		log.Printf("[%s] Monitor started for: %s", hash, startInfo.Name)
+		log.Printf("[%q] Monitor started for: %q", hash, startInfo.Name)
 	} else {
-		log.Printf("[%s] Monitor started (name pending...)", hash)
+		log.Printf("[%q] Monitor started (name pending...)", hash)
 	}
 
 	lastPct := -1
@@ -145,7 +145,7 @@ func trackTorrent(hash string) {
 	for {
 		select {
 		case <-appCtx.Done():
-			log.Printf("[%s] Shutting down monitor...", hash)
+			log.Printf("[%q] Shutting down monitor...", hash)
 			return
 		case <-ticker.C:
 			// Continue with logic below
@@ -153,11 +153,11 @@ func trackTorrent(hash string) {
 
 		t, err := getTorrentInfo(client, hash)
 		if err != nil {
-			log.Printf("[%s] Error: %v", hash, err)
+			log.Printf("[%q] Error: %v", hash, err)
 			continue
 		}
 		if t == nil {
-			log.Printf("[%s] Torrent removed. Stopping.", hash)
+			log.Printf("[%q] Torrent removed. Stopping.", hash)
 			return
 		}
 
@@ -172,7 +172,7 @@ func trackTorrent(hash string) {
 		// Check Completion
 		// qBittorrent states: upload, uploading, upLO, pausedUP, completed, etc.
 		if pct >= 100 || strings.Contains(t.State, "up") || t.State == "completed" {
-			log.Printf("[%s] Torrent finished (%s). Stopping monitor.", hash, t.Name)
+			log.Printf("[%q] Torrent finished (%q). Stopping monitor.", hash, t.Name)
 			if notifyComplete {
 				sendComplete(t)
 			}
