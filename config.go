@@ -1,0 +1,121 @@
+package main
+
+import (
+	"log"
+	"net/netip"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// --- Configuration ---
+var (
+	qbitHost       string
+	qbitUser       string
+	qbitPass       string
+	ntfyServer     string
+	ntfyUser       string
+	ntfyPass       string
+	ntfyTopic      string
+	ntfyPrioProg   string
+	ntfyPrioComp   string
+	notifyComplete bool
+	progressFormat string
+	pollInt        time.Duration
+	allowedSubnets []netip.Prefix
+)
+
+func loadConfig() {
+	qbitHost = getEnv("QBIT_HOST", "http://localhost:8080")
+	qbitUser = getEnv("QBIT_USER", "")
+	qbitPass = getEnv("QBIT_PASS", "")
+
+	ntfyServer = strings.TrimRight(getEnv("NTFY_SERVER", "https://ntfy.sh"), "/")
+	ntfyUser = getEnv("NTFY_USER", "")
+	ntfyPass = getEnv("NTFY_PASS", "")
+	ntfyTopic = mustGetEnv("NTFY_TOPIC")
+	ntfyPrioProg = getEnv("NTFY_PRIORITY_PROGRESS", "2") // Default: Low (no sound/vibe)
+	ntfyPrioComp = getEnv("NTFY_PRIORITY_COMPLETE", "3") // Default: Default (sound/vibe)
+
+	notifyComplete = getEnvBool("NOTIFY_COMPLETE", true)
+	progressFormat = getEnv("PROGRESS_FORMAT", "bar") // "bar" or "percent"
+	pollIntVal := getEnvInt("POLL_INTERVAL", 5)
+	if pollIntVal <= 0 {
+		log.Fatalf("Invalid POLL_INTERVAL: %d. Must be > 0", pollIntVal)
+	}
+	pollInt = time.Duration(pollIntVal) * time.Second
+
+	// Parse ALLOWED_SUBNETS
+	subnetEnv := getEnv("ALLOWED_SUBNETS", "")
+	if subnetEnv != "" {
+		for _, s := range strings.Split(subnetEnv, ",") {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			// Format single IPs as CIDRs using robust validation
+			if !strings.Contains(s, "/") {
+				ip, err := netip.ParseAddr(s)
+				if err != nil {
+					log.Printf("Warning: Invalid IP format %q: %v. Ignoring.", s, err)
+					continue
+				}
+				if ip.Is6() {
+					s = s + "/128"
+				} else {
+					s = s + "/32"
+				}
+			}
+			prefix, err := netip.ParsePrefix(s)
+			if err != nil {
+				log.Printf("Warning: Invalid subnet format %q: %v. Ignoring.", s, err)
+				continue
+			}
+			allowedSubnets = append(allowedSubnets, prefix)
+		}
+	} else {
+		log.Println("WARNING: ALLOWED_SUBNETS is not set. The /track endpoint will deny all requests.")
+	}
+}
+
+func mustGetEnv(k string) string {
+	v := os.Getenv(k)
+	if v == "" {
+		log.Fatalf("Missing ENV: %s", k)
+	}
+	return v
+}
+
+func getEnv(k, fallback string) string {
+	v := os.Getenv(k)
+	if v == "" {
+		return fallback
+	}
+	return v
+}
+
+func getEnvBool(k string, fallback bool) bool {
+	v := os.Getenv(k)
+	if v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return b
+}
+
+func getEnvInt(k string, fallback int) int {
+	v := os.Getenv(k)
+	if v == "" {
+		return fallback
+	}
+	i, err := strconv.Atoi(v)
+	if err != nil {
+		log.Printf("Warning: Invalid value for %s: %q. Using fallback: %d", k, v, fallback)
+		return fallback
+	}
+	return i
+}
