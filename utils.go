@@ -32,3 +32,9 @@ func formatDuration(sec int) string {
 	}
 	return (time.Duration(sec) * time.Second).String()
 }
+
+func sanitizeHeader(val string) string {
+	val = strings.ReplaceAll(val, "\r", "")
+	val = strings.ReplaceAll(val, "\n", " ")
+	return strings.TrimSpace(val)
+}

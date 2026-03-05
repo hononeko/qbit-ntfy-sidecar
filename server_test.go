@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -170,27 +171,30 @@ func TestHandleTrackRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			app := &App{
+				Config: &Config{
+					PollInt: 10 * time.Millisecond,
+				},
+				ActiveMonitors: make(map[string]bool),
+				Ctx:            ctx,
+				Cancel:         cancel,
+			}
+			defer app.Cancel()
+
 			// Hack activeMonitors
 			if tt.preTrack {
-				mutex.Lock()
-				activeMonitors[tt.hash] = true
-				mutex.Unlock()
-			} else {
-				mutex.Lock()
-				delete(activeMonitors, tt.hash)
-				mutex.Unlock()
+				app.Mutex.Lock()
+				app.ActiveMonitors[tt.hash] = true
+				app.Mutex.Unlock()
 			}
 
 			// Clean up worker threads when test finishes
 			defer func() {
-				mutex.Lock()
-				delete(activeMonitors, tt.hash)
-				mutex.Unlock()
+				app.Mutex.Lock()
+				delete(app.ActiveMonitors, tt.hash)
+				app.Mutex.Unlock()
 			}()
-
-			app := &App{Config: &Config{
-				PollInt: 10 * time.Millisecond,
-			}}
 
 			req := httptest.NewRequest(tt.method, "/track?hash="+tt.hash, nil)
 			rec := httptest.NewRecorder()

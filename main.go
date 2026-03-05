@@ -6,19 +6,29 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
 
 type App struct {
-	Config *Config
+	Config         *Config
+	ActiveMonitors map[string]bool
+	Mutex          sync.Mutex
+	Wg             sync.WaitGroup
+	Ctx            context.Context
+	Cancel         context.CancelFunc
 }
 
 func main() {
 	log.SetFlags(0) // K8s handles timestamps
 
+	ctx, cancel := context.WithCancel(context.Background())
 	app := &App{
-		Config: loadConfig(),
+		Config:         loadConfig(),
+		ActiveMonitors: make(map[string]bool),
+		Ctx:            ctx,
+		Cancel:         cancel,
 	}
 
 	// 2. Start Trigger Server
@@ -28,12 +38,10 @@ func main() {
 	log.Printf("Sidecar listening on :%s", port)
 	log.Printf("Config: Host=%s Auth=%v Topic=%s/*** NtfyAuth=%v", app.Config.QbitHost, app.Config.QbitUser != "", app.Config.NtfyServer, app.Config.NtfyUser != "")
 
-	// Global Context for shutdown signaling
-	appCtx, appCancel = context.WithCancel(context.Background())
-	defer appCancel()
+	defer app.Cancel()
 
 	// 3. Run Startup Scan (Background)
-	appWg.Add(1)
+	app.Wg.Add(1)
 	go app.startupScan()
 
 	server := &http.Server{
@@ -59,19 +67,19 @@ func main() {
 	log.Println("Shutting down sidecar...")
 
 	// Signal workers to stop
-	appCancel()
+	app.Cancel()
 
 	// Shutdown HTTP server
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
 
-	if err := server.Shutdown(ctx); err != nil {
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Server forced to shutdown: %v", err)
 	}
 
 	// Wait for workers
 	log.Println("Waiting for background workers...")
-	appWg.Wait()
+	app.Wg.Wait()
 
 	log.Println("Sidecar exited gracefully")
 }

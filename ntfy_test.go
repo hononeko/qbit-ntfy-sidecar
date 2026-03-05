@@ -16,10 +16,10 @@ func TestSendNtfy(t *testing.T) {
 		}
 
 		// Common assertions
-		if got := r.Header.Get("Priority"); got != "3" {
+		if got := r.Header.Get("Priority"); got != "3" && got != "3 test" {
 			t.Errorf("Expected Priority '3', got '%s'", got)
 		}
-		if got := r.Header.Get("Tags"); got != "tag" {
+		if got := r.Header.Get("Tags"); got != "tag" && got != "tag " {
 			t.Errorf("Expected Tags 'tag', got '%s'", got)
 		}
 
@@ -50,8 +50,9 @@ func TestSendNtfy(t *testing.T) {
 			if got := r.Header.Get("Title"); got != "Test Title" {
 				t.Errorf("Expected Title 'Test Title', got '%s'", got)
 			}
-			if string(body) != "Test Message" {
-				t.Errorf("Expected body 'Test Message', got '%s'", string(body))
+			msgStr := string(body)
+			if msgStr != "Test Message" && msgStr != "Test Message\r\n" {
+				t.Errorf("Expected body 'Test Message', got '%s'", msgStr)
 			}
 		}
 
@@ -72,6 +73,12 @@ func TestSendNtfy(t *testing.T) {
 	cfg.NtfyUser = "testuser"
 	cfg.NtfyPass = "testpass"
 	sendNtfy(cfg, "Auth Title", "Auth Message", "tag", "id", "3")
+
+	// 3. Test Header Sanitization (Newline Injection Attack)
+	cfg.NtfyTopic = "test_topic"
+	cfg.NtfyUser = ""
+	cfg.NtfyPass = ""
+	sendNtfy(cfg, "Test\r\nTitle", "Test Message\r\n", "tag\n", "id\r", "3\r\ntest")
 }
 
 func TestSendNtfy_Error(t *testing.T) {

@@ -1,27 +1,16 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
-	"sync"
 	"time"
 )
 
-// --- State ---
-var (
-	activeMonitors = make(map[string]bool)
-	mutex          sync.Mutex
-	appCtx         context.Context
-	appCancel      context.CancelFunc
-	appWg          sync.WaitGroup
-)
-
 func (a *App) startupScan() {
-	defer appWg.Done()
+	defer a.Wg.Done()
 
 	// Retry loop to wait for qBittorrent to be ready
 	jar, _ := cookiejar.New(nil)
@@ -30,7 +19,7 @@ func (a *App) startupScan() {
 	for {
 		// Check for shutdown
 		select {
-		case <-appCtx.Done():
+		case <-a.Ctx.Done():
 			return
 		default:
 		}
@@ -42,7 +31,7 @@ func (a *App) startupScan() {
 			select {
 			case <-time.After(d):
 				return false
-			case <-appCtx.Done():
+			case <-a.Ctx.Done():
 				return true
 			}
 		}
@@ -91,15 +80,15 @@ func (a *App) startupScan() {
 		// 3. Sync
 		log.Printf("Startup: Found %d active downloads. Syncing...", len(torrents))
 		for _, t := range torrents {
-			mutex.Lock()
-			if !activeMonitors[t.Hash] {
-				activeMonitors[t.Hash] = true
-				mutex.Unlock()
+			a.Mutex.Lock()
+			if !a.ActiveMonitors[t.Hash] {
+				a.ActiveMonitors[t.Hash] = true
+				a.Mutex.Unlock()
 				log.Printf("Startup: Resuming monitor for %q (%q)", t.Name, t.Hash)
-				appWg.Add(1)
+				a.Wg.Add(1)
 				go a.trackTorrent(t.Hash)
 			} else {
-				mutex.Unlock()
+				a.Mutex.Unlock()
 			}
 		}
 
@@ -109,11 +98,11 @@ func (a *App) startupScan() {
 }
 
 func (a *App) trackTorrent(hash string) {
-	defer appWg.Done()
+	defer a.Wg.Done()
 	defer func() {
-		mutex.Lock()
-		delete(activeMonitors, hash)
-		mutex.Unlock()
+		a.Mutex.Lock()
+		delete(a.ActiveMonitors, hash)
+		a.Mutex.Unlock()
 	}()
 
 	// Per-routine client to handle independent auth sessions cleanly
@@ -144,7 +133,7 @@ func (a *App) trackTorrent(hash string) {
 
 	for {
 		select {
-		case <-appCtx.Done():
+		case <-a.Ctx.Done():
 			log.Printf("[%q] Shutting down monitor...", hash)
 			return
 		case <-ticker.C:

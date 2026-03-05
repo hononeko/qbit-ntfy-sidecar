@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func sendUpdate(cfg *Config, t *Torrent, pct int) {
@@ -32,17 +33,22 @@ func sendNtfy(cfg *Config, title, msg, tag, id, priority string) {
 	}
 
 	url := fmt.Sprintf("%s/%s", cfg.NtfyServer, cfg.NtfyTopic)
-	req, _ := http.NewRequest("POST", url, strings.NewReader(msg))
-	req.Header.Set("Title", title)
-	req.Header.Set("Tags", tag)
-	req.Header.Set("Priority", priority)
-	req.Header.Set("X-Sequence-ID", id)
+	req, err := http.NewRequest("POST", url, strings.NewReader(msg))
+	if err != nil {
+		log.Printf("Failed to create ntfy request: %v", err)
+		return
+	}
+	req.Header.Set("Title", sanitizeHeader(title))
+	req.Header.Set("Tags", sanitizeHeader(tag))
+	req.Header.Set("Priority", sanitizeHeader(priority))
+	req.Header.Set("X-Sequence-ID", sanitizeHeader(id))
 
 	if cfg.NtfyUser != "" && cfg.NtfyPass != "" {
 		req.SetBasicAuth(cfg.NtfyUser, cfg.NtfyPass)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Failed to send ntfy notification: %v", err)
 		return
