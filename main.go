@@ -26,7 +26,7 @@ func main() {
 
 	port := "9090"
 	log.Printf("Sidecar listening on :%s", port)
-	log.Printf("Config: Host=%s Auth=%v Topic=%s/%s NtfyAuth=%v", app.Config.QbitHost, app.Config.QbitUser != "", app.Config.NtfyServer, app.Config.NtfyTopic, app.Config.NtfyUser != "")
+	log.Printf("Config: Host=%s Auth=%v Topic=%s/*** NtfyAuth=%v", app.Config.QbitHost, app.Config.QbitUser != "", app.Config.NtfyServer, app.Config.NtfyUser != "")
 
 	// Global Context for shutdown signaling
 	appCtx, appCancel = context.WithCancel(context.Background())

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var validHashRx = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+var validHashRx = regexp.MustCompile(`^([a-fA-F0-9]{40}|[a-fA-F0-9]{64})$`)
 
 func IsValidHash(hash string) bool {
 	return validHashRx.MatchString(hash)
