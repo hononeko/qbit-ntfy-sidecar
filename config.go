@@ -9,42 +9,43 @@ import (
 	"time"
 )
 
-// --- Configuration ---
-var (
-	qbitHost       string
-	qbitUser       string
-	qbitPass       string
-	ntfyServer     string
-	ntfyUser       string
-	ntfyPass       string
-	ntfyTopic      string
-	ntfyPrioProg   string
-	ntfyPrioComp   string
-	notifyComplete bool
-	progressFormat string
-	pollInt        time.Duration
-	allowedSubnets []netip.Prefix
-)
+// Config holds the application configuration
+type Config struct {
+	QbitHost       string
+	QbitUser       string
+	QbitPass       string
+	NtfyServer     string
+	NtfyUser       string
+	NtfyPass       string
+	NtfyTopic      string
+	NtfyPrioProg   string
+	NtfyPrioComp   string
+	NotifyComplete bool
+	ProgressFormat string
+	PollInt        time.Duration
+	AllowedSubnets []netip.Prefix
+}
 
-func loadConfig() {
-	qbitHost = getEnv("QBIT_HOST", "http://localhost:8080")
-	qbitUser = getEnv("QBIT_USER", "")
-	qbitPass = getEnv("QBIT_PASS", "")
+func loadConfig() *Config {
+	cfg := &Config{}
+	cfg.QbitHost = getEnv("QBIT_HOST", "http://localhost:8080")
+	cfg.QbitUser = getEnv("QBIT_USER", "")
+	cfg.QbitPass = getEnv("QBIT_PASS", "")
 
-	ntfyServer = strings.TrimRight(getEnv("NTFY_SERVER", "https://ntfy.sh"), "/")
-	ntfyUser = getEnv("NTFY_USER", "")
-	ntfyPass = getEnv("NTFY_PASS", "")
-	ntfyTopic = mustGetEnv("NTFY_TOPIC")
-	ntfyPrioProg = getEnv("NTFY_PRIORITY_PROGRESS", "2") // Default: Low (no sound/vibe)
-	ntfyPrioComp = getEnv("NTFY_PRIORITY_COMPLETE", "3") // Default: Default (sound/vibe)
+	cfg.NtfyServer = strings.TrimRight(getEnv("NTFY_SERVER", "https://ntfy.sh"), "/")
+	cfg.NtfyUser = getEnv("NTFY_USER", "")
+	cfg.NtfyPass = getEnv("NTFY_PASS", "")
+	cfg.NtfyTopic = mustGetEnv("NTFY_TOPIC")
+	cfg.NtfyPrioProg = getEnv("NTFY_PRIORITY_PROGRESS", "2") // Default: Low (no sound/vibe)
+	cfg.NtfyPrioComp = getEnv("NTFY_PRIORITY_COMPLETE", "3") // Default: Default (sound/vibe)
 
-	notifyComplete = getEnvBool("NOTIFY_COMPLETE", true)
-	progressFormat = getEnv("PROGRESS_FORMAT", "bar") // "bar" or "percent"
+	cfg.NotifyComplete = getEnvBool("NOTIFY_COMPLETE", true)
+	cfg.ProgressFormat = getEnv("PROGRESS_FORMAT", "bar") // "bar" or "percent"
 	pollIntVal := getEnvInt("POLL_INTERVAL", 5)
 	if pollIntVal <= 0 {
 		log.Fatalf("Invalid POLL_INTERVAL: %d. Must be > 0", pollIntVal)
 	}
-	pollInt = time.Duration(pollIntVal) * time.Second
+	cfg.PollInt = time.Duration(pollIntVal) * time.Second
 
 	// Parse ALLOWED_SUBNETS
 	subnetEnv := getEnv("ALLOWED_SUBNETS", "")
@@ -72,11 +73,12 @@ func loadConfig() {
 				log.Printf("Warning: Invalid subnet format %q: %v. Ignoring.", s, err)
 				continue
 			}
-			allowedSubnets = append(allowedSubnets, prefix)
+			cfg.AllowedSubnets = append(cfg.AllowedSubnets, prefix)
 		}
 	} else {
 		log.Println("WARNING: ALLOWED_SUBNETS is not set. The /track endpoint will deny all requests.")
 	}
+	return cfg
 }
 
 func mustGetEnv(k string) string {

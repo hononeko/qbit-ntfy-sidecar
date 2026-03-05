@@ -66,13 +66,11 @@ func TestGetTorrentInfo(t *testing.T) {
 			}))
 			defer ts.Close()
 
-			// Override global host
-			oldHost := qbitHost
-			qbitHost = ts.URL
-			defer func() { qbitHost = oldHost }()
+			// Setup config with mock host
+			cfg := &Config{QbitHost: ts.URL}
 
 			client := ts.Client()
-			torrent, err := getTorrentInfo(client, "123")
+			torrent, err := getTorrentInfo(client, cfg, "123")
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error, got nil")
@@ -95,8 +93,8 @@ func TestGetTorrentInfo(t *testing.T) {
 	}
 
 	t.Run("Client Error", func(t *testing.T) {
-		qbitHost = "http://127.0.0.1:0" // Invalid port causes immediate connection refused
-		_, err := getTorrentInfo(http.DefaultClient, "123")
+		cfg := &Config{QbitHost: "http://127.0.0.1:0"} // Invalid port causes immediate connection refused
+		_, err := getTorrentInfo(http.DefaultClient, cfg, "123")
 		if err == nil {
 			t.Error("Expected error, got nil")
 		}
@@ -139,14 +137,13 @@ func TestLogin(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(tt.handler))
 			defer ts.Close()
 
-			oldHost := qbitHost
-			qbitHost = ts.URL
-			defer func() { qbitHost = oldHost }()
+			cfg := &Config{
+				QbitHost: ts.URL,
+				QbitUser: "admin",
+				QbitPass: "adminadmin",
+			}
 
-			qbitUser = "admin"
-			qbitPass = "adminadmin"
-
-			err := login(ts.Client())
+			err := login(ts.Client(), cfg)
 			if tt.expectError && err == nil {
 				t.Error("expected error, got nil")
 			}
@@ -157,8 +154,8 @@ func TestLogin(t *testing.T) {
 	}
 
 	t.Run("Client Error", func(t *testing.T) {
-		qbitHost = "http://127.0.0.1:0"
-		err := login(http.DefaultClient)
+		cfg := &Config{QbitHost: "http://127.0.0.1:0"}
+		err := login(http.DefaultClient, cfg)
 		if err == nil {
 			t.Error("expected error, got nil")
 		}

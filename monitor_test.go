@@ -33,22 +33,14 @@ func TestStartupScan(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	// Override global config
-	oldHost := qbitHost
-	oldUser := qbitUser
-	oldPass := qbitPass
-	oldPollInt := pollInt
-	t.Cleanup(func() {
-		qbitHost = oldHost
-		qbitUser = oldUser
-		qbitPass = oldPass
-		pollInt = oldPollInt
-	})
-
-	qbitHost = ts.URL
-	qbitUser = "admin"
-	qbitPass = "adminadmin"
-	pollInt = 100 * time.Millisecond // fast polling for tests
+	app := &App{
+		Config: &Config{
+			QbitHost: ts.URL,
+			QbitUser: "admin",
+			QbitPass: "adminadmin",
+			PollInt:  100 * time.Millisecond, // fast polling for tests
+		},
+	}
 
 	// Reset global state
 	activeMonitors = make(map[string]bool)
@@ -58,7 +50,7 @@ func TestStartupScan(t *testing.T) {
 
 	// Run startupScan
 	appWg.Add(1)
-	startupScan()
+	app.startupScan()
 
 	// Verify state
 	mutex.Lock()
@@ -128,18 +120,15 @@ func TestTrackTorrent(t *testing.T) {
 	}))
 	defer ntfyTs.Close()
 
-	oldNtfy := ntfyServer
-	ntfyServer = ntfyTs.URL
-	oldHost := qbitHost
-	qbitHost = ts.URL
-	oldPollInt := pollInt
-	pollInt = 10 * time.Millisecond // very fast trigger
-
-	t.Cleanup(func() {
-		qbitHost = oldHost
-		ntfyServer = oldNtfy
-		pollInt = oldPollInt
-	})
+	app := &App{
+		Config: &Config{
+			NtfyServer:     ntfyTs.URL,
+			NtfyTopic:      "test",
+			QbitHost:       ts.URL,
+			PollInt:        10 * time.Millisecond,
+			NotifyComplete: true,
+		},
+	}
 
 	// Reset state
 	activeMonitors = make(map[string]bool)
@@ -150,7 +139,7 @@ func TestTrackTorrent(t *testing.T) {
 
 	// Start tracking
 	appWg.Add(1)
-	go trackTorrent("testhash")
+	go app.trackTorrent("testhash")
 
 	// Allow first mock response to process, then advance stage
 	time.Sleep(50 * time.Millisecond)
@@ -217,25 +206,17 @@ func TestStartupScan_Errors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(tt.handler))
+			defer ts.Close()
 
-			// Override globals
-			oldHost := qbitHost
-			oldUser := qbitUser
-			oldPass := qbitPass
-			qbitHost = ts.URL
-			if tt.auth {
-				qbitUser = "admin"
-				qbitPass = "admin"
-			} else {
-				qbitUser = ""
-				qbitPass = ""
+			app := &App{
+				Config: &Config{
+					QbitHost: ts.URL,
+				},
 			}
-			t.Cleanup(func() {
-				qbitHost = oldHost
-				qbitUser = oldUser
-				qbitPass = oldPass
-				ts.Close()
-			})
+			if tt.auth {
+				app.Config.QbitUser = "admin"
+				app.Config.QbitPass = "admin"
+			}
 
 			appCtx, appCancel = context.WithCancel(context.Background())
 
@@ -246,19 +227,17 @@ func TestStartupScan_Errors(t *testing.T) {
 			}()
 
 			appWg.Add(1)
-			startupScan() // this will block until appCancel fires inside sleepOrExit
+			app.startupScan() // this will block until appCancel fires inside sleepOrExit
 		})
 	}
 
 	// Test Connection Failed
 	t.Run("Connection Failed", func(t *testing.T) {
-		oldHost := qbitHost
-		qbitHost = "http://127.0.0.1:0"
-		qbitUser = ""
-		qbitPass = ""
-		t.Cleanup(func() {
-			qbitHost = oldHost
-		})
+		app := &App{
+			Config: &Config{
+				QbitHost: "http://127.0.0.1:0",
+			},
+		}
 
 		appCtx, appCancel = context.WithCancel(context.Background())
 		go func() {
@@ -267,7 +246,7 @@ func TestStartupScan_Errors(t *testing.T) {
 		}()
 
 		appWg.Add(1)
-		startupScan()
+		app.startupScan()
 	})
 }
 
@@ -279,18 +258,16 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		oldHost := qbitHost
-		qbitHost = ts.URL
-		qbitUser = "admin"
-		qbitPass = "admin"
-		t.Cleanup(func() {
-			qbitHost = oldHost
-			qbitUser = ""
-			qbitPass = ""
-		})
+		app := &App{
+			Config: &Config{
+				QbitHost: ts.URL,
+				QbitUser: "admin",
+				QbitPass: "admin",
+			},
+		}
 
 		appWg.Add(1)
-		trackTorrent("hash") // should return immediately after login fails
+		app.trackTorrent("hash") // should return immediately after login fails
 	})
 
 	t.Run("Torrent Removed", func(t *testing.T) {
@@ -301,22 +278,18 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		oldHost := qbitHost
-		qbitHost = ts.URL
-		qbitUser = ""
-		qbitPass = ""
-		oldPoll := pollInt
-		pollInt = 10 * time.Millisecond
-		t.Cleanup(func() {
-			qbitHost = oldHost
-			pollInt = oldPoll
-		})
+		app := &App{
+			Config: &Config{
+				QbitHost: ts.URL,
+				PollInt:  10 * time.Millisecond,
+			},
+		}
 
 		appCtx, appCancel = context.WithCancel(context.Background())
 		defer appCancel()
 
 		appWg.Add(1)
-		trackTorrent("hash") // should fetch once, get nil, log removed and return
+		app.trackTorrent("hash") // should fetch once, get nil, log removed and return
 	})
 
 	t.Run("API Error Loop Break", func(t *testing.T) {
@@ -326,16 +299,12 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		oldHost := qbitHost
-		qbitHost = ts.URL
-		qbitUser = ""
-		qbitPass = ""
-		oldPoll := pollInt
-		pollInt = 10 * time.Millisecond
-		t.Cleanup(func() {
-			qbitHost = oldHost
-			pollInt = oldPoll
-		})
+		app := &App{
+			Config: &Config{
+				QbitHost: ts.URL,
+				PollInt:  10 * time.Millisecond,
+			},
+		}
 
 		appCtx, appCancel = context.WithCancel(context.Background())
 		go func() {
@@ -344,6 +313,6 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		}()
 
 		appWg.Add(1)
-		trackTorrent("hash") // fetch fails, continues loop, then cancel triggers break
+		app.trackTorrent("hash") // fetch fails, continues loop, then cancel triggers break
 	})
 }

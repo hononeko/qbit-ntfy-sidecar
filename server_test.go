@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 )
 
 func parseSubnets(subnets []string) []netip.Prefix {
@@ -101,12 +102,11 @@ func TestIPFilterMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Backup global subnets
-			oldSubnets := allowedSubnets
-			t.Cleanup(func() { allowedSubnets = oldSubnets })
-
-			// Populate allowedSubnets
-			allowedSubnets = parseSubnets(tt.allowedSubnets)
+			app := &App{
+				Config: &Config{
+					AllowedSubnets: parseSubnets(tt.allowedSubnets),
+				},
+			}
 
 			// Setup dummy handler to wrap
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +114,7 @@ func TestIPFilterMiddleware(t *testing.T) {
 				_, _ = w.Write([]byte("OK"))
 			})
 
-			middleware := ipFilterMiddleware(nextHandler)
+			middleware := app.ipFilterMiddleware(nextHandler)
 
 			// Execute mock request
 			req := httptest.NewRequest("POST", "/track?hash=123", nil)
@@ -188,10 +188,14 @@ func TestHandleTrackRequest(t *testing.T) {
 				mutex.Unlock()
 			}()
 
+			app := &App{Config: &Config{
+				PollInt: 10 * time.Millisecond,
+			}}
+
 			req := httptest.NewRequest(tt.method, "/track?hash="+tt.hash, nil)
 			rec := httptest.NewRecorder()
 
-			handleTrackRequest(rec, req)
+			app.handleTrackRequest(rec, req)
 
 			if rec.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rec.Code)

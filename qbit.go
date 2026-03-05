@@ -19,8 +19,8 @@ type Torrent struct {
 	State    string  `json:"state"`
 }
 
-func getTorrentInfo(client *http.Client, hash string) (*Torrent, error) {
-	resp, err := client.Get(qbitHost + "/api/v2/torrents/info?hashes=" + hash)
+func getTorrentInfo(client *http.Client, cfg *Config, hash string) (*Torrent, error) {
+	resp, err := client.Get(cfg.QbitHost + "/api/v2/torrents/info?hashes=" + url.QueryEscape(hash))
 	if err != nil {
 		return nil, err
 	}
@@ -41,18 +41,22 @@ func getTorrentInfo(client *http.Client, hash string) (*Torrent, error) {
 	return &torrents[0], nil
 }
 
-func login(client *http.Client) error {
+func login(client *http.Client, cfg *Config) error {
 	data := url.Values{}
-	data.Set("username", qbitUser)
-	data.Set("password", qbitPass)
+	data.Set("username", cfg.QbitUser)
+	data.Set("password", cfg.QbitPass)
 
-	resp, err := client.PostForm(qbitHost+"/api/v2/auth/login", data)
+	resp, err := client.PostForm(cfg.QbitHost+"/api/v2/auth/login", data)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %v", err)
+	}
+
 	if resp.StatusCode != 200 || strings.Contains(string(body), "Fails.") {
 		return fmt.Errorf("bad credentials or connection failed")
 	}

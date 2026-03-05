@@ -10,17 +10,23 @@ import (
 	"time"
 )
 
+type App struct {
+	Config *Config
+}
+
 func main() {
 	log.SetFlags(0) // K8s handles timestamps
 
-	loadConfig()
+	app := &App{
+		Config: loadConfig(),
+	}
 
 	// 2. Start Trigger Server
-	http.HandleFunc("/track", ipFilterMiddleware(handleTrackRequest))
+	http.HandleFunc("/track", app.ipFilterMiddleware(app.handleTrackRequest))
 
 	port := "9090"
 	log.Printf("Sidecar listening on :%s", port)
-	log.Printf("Config: Host=%s Auth=%v Topic=%s/%s NtfyAuth=%v", qbitHost, qbitUser != "", ntfyServer, ntfyTopic, ntfyUser != "")
+	log.Printf("Config: Host=%s Auth=%v Topic=%s/%s NtfyAuth=%v", app.Config.QbitHost, app.Config.QbitUser != "", app.Config.NtfyServer, app.Config.NtfyTopic, app.Config.NtfyUser != "")
 
 	// Global Context for shutdown signaling
 	appCtx, appCancel = context.WithCancel(context.Background())
@@ -28,7 +34,7 @@ func main() {
 
 	// 3. Run Startup Scan (Background)
 	appWg.Add(1)
-	go startupScan()
+	go app.startupScan()
 
 	server := &http.Server{
 		Addr:         ":" + port,
