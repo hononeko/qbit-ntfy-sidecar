@@ -20,13 +20,17 @@ func TestMainLifecycle(t *testing.T) {
 	// in a testing environment without mocking `http.ListenAndServe`, which is hardcoded inside main.
 
 	// Instead, we will test the graceful shutdown apparatus directly.
-	appCtx, appCancel = context.WithCancel(context.Background())
-	appWg.Add(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	app := &App{
+		Ctx:    ctx,
+		Cancel: cancel,
+	}
+	app.Wg.Add(1)
 
 	go func() {
-		defer appWg.Done()
+		defer app.Wg.Done()
 		select {
-		case <-appCtx.Done():
+		case <-app.Ctx.Done():
 			return
 		case <-time.After(1 * time.Second):
 			t.Error("worker did not exit when context was cancelled")
@@ -34,12 +38,12 @@ func TestMainLifecycle(t *testing.T) {
 	}()
 
 	// Trigger the cleanup Phase
-	appCancel()
+	app.Cancel()
 
 	// Wait on the group
 	waitCh := make(chan struct{})
 	go func() {
-		appWg.Wait()
+		app.Wg.Wait()
 		close(waitCh)
 	}()
 
@@ -47,6 +51,6 @@ func TestMainLifecycle(t *testing.T) {
 	case <-waitCh:
 		// Success
 	case <-time.After(2 * time.Second):
-		t.Fatal("appWg.Wait() hung, likely due to a leaked worker goroutine")
+		t.Fatal("app.Wg.Wait() hung, likely due to a leaked worker goroutine")
 	}
 }

@@ -33,31 +33,30 @@ func TestStartupScan(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	appCtx, appCancel := context.WithCancel(context.Background())
 	app := &App{
 		Config: &Config{
 			QbitHost: ts.URL,
 			QbitUser: "admin",
 			QbitPass: "adminadmin",
-			PollInt:  100 * time.Millisecond, // fast polling for tests
+			PollInt:  100 * time.Millisecond,
 		},
+		ActiveMonitors: make(map[string]bool),
+		Ctx:            appCtx,
+		Cancel:         appCancel,
 	}
-
-	// Reset global state
-	activeMonitors = make(map[string]bool)
-	appWg = sync.WaitGroup{}
-	appCtx, appCancel = context.WithCancel(context.Background())
-	defer appCancel() // Ensure cleanup
+	defer app.Cancel() // Ensure cleanup
 
 	// Run startupScan
-	appWg.Add(1)
+	app.Wg.Add(1)
 	app.startupScan()
 
 	// Verify state
-	mutex.Lock()
-	count := len(activeMonitors)
-	hasHash1 := activeMonitors["hash1"]
-	hasHash2 := activeMonitors["hash2"]
-	mutex.Unlock()
+	app.Mutex.Lock()
+	count := len(app.ActiveMonitors)
+	hasHash1 := app.ActiveMonitors["hash1"]
+	hasHash2 := app.ActiveMonitors["hash2"]
+	app.Mutex.Unlock()
 
 	if count != 2 {
 		t.Errorf("expected 2 monitors, got %d", count)
@@ -67,12 +66,12 @@ func TestStartupScan(t *testing.T) {
 	}
 
 	// Wait for workers to cleanly exit via context cancellation
-	appCancel()
+	app.Cancel()
 
 	// Use a channel to prevent testing deadlocks
 	done := make(chan struct{})
 	go func() {
-		appWg.Wait()
+		app.Wg.Wait()
 		close(done)
 	}()
 
@@ -120,6 +119,7 @@ func TestTrackTorrent(t *testing.T) {
 	}))
 	defer ntfyTs.Close()
 
+	appCtx, appCancel := context.WithCancel(context.Background())
 	app := &App{
 		Config: &Config{
 			NtfyServer:     ntfyTs.URL,
@@ -128,17 +128,14 @@ func TestTrackTorrent(t *testing.T) {
 			PollInt:        10 * time.Millisecond,
 			NotifyComplete: true,
 		},
+		ActiveMonitors: map[string]bool{"testhash": true},
+		Ctx:            appCtx,
+		Cancel:         appCancel,
 	}
-
-	// Reset state
-	activeMonitors = make(map[string]bool)
-	activeMonitors["testhash"] = true
-	appWg = sync.WaitGroup{}
-	appCtx, appCancel = context.WithCancel(context.Background())
-	defer appCancel()
+	defer app.Cancel()
 
 	// Start tracking
-	appWg.Add(1)
+	app.Wg.Add(1)
 	go app.trackTorrent("testhash")
 
 	// Allow first mock response to process, then advance stage
@@ -151,7 +148,7 @@ func TestTrackTorrent(t *testing.T) {
 	// Wait for completion logic to kick in and exit the goroutine
 	done := make(chan struct{})
 	go func() {
-		appWg.Wait()
+		app.Wg.Wait()
 		close(done)
 	}()
 
@@ -161,9 +158,9 @@ func TestTrackTorrent(t *testing.T) {
 			t.Error("Expected Ntfy to be called on completion")
 		}
 
-		mutex.Lock()
-		active := activeMonitors["testhash"]
-		mutex.Unlock()
+		app.Mutex.Lock()
+		active := app.ActiveMonitors["testhash"]
+		app.Mutex.Unlock()
 		if active {
 			t.Error("Expected monitor to be removed from activeMonitors map")
 		}
@@ -208,44 +205,47 @@ func TestStartupScan_Errors(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(tt.handler))
 			defer ts.Close()
 
+			appCtx, appCancel := context.WithCancel(context.Background())
 			app := &App{
 				Config: &Config{
 					QbitHost: ts.URL,
 				},
+				Ctx:    appCtx,
+				Cancel: appCancel,
 			}
 			if tt.auth {
 				app.Config.QbitUser = "admin"
 				app.Config.QbitPass = "admin"
 			}
 
-			appCtx, appCancel = context.WithCancel(context.Background())
-
 			// We will cancel the context shortly after starting, which causes sleepOrExit to trigger the exit path naturally
 			go func() {
 				time.Sleep(50 * time.Millisecond) // Give it enough time to hit the error and enter sleepOrExit
-				appCancel()
+				app.Cancel()
 			}()
 
-			appWg.Add(1)
+			app.Wg.Add(1)
 			app.startupScan() // this will block until appCancel fires inside sleepOrExit
 		})
 	}
 
 	// Test Connection Failed
 	t.Run("Connection Failed", func(t *testing.T) {
+		appCtx, appCancel := context.WithCancel(context.Background())
 		app := &App{
 			Config: &Config{
 				QbitHost: "http://127.0.0.1:0",
 			},
+			Ctx:    appCtx,
+			Cancel: appCancel,
 		}
 
-		appCtx, appCancel = context.WithCancel(context.Background())
 		go func() {
 			time.Sleep(50 * time.Millisecond)
-			appCancel()
+			app.Cancel()
 		}()
 
-		appWg.Add(1)
+		app.Wg.Add(1)
 		app.startupScan()
 	})
 }
@@ -258,15 +258,19 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		}))
 		defer ts.Close()
 
+		appCtx, appCancel := context.WithCancel(context.Background())
 		app := &App{
 			Config: &Config{
 				QbitHost: ts.URL,
 				QbitUser: "admin",
 				QbitPass: "admin",
 			},
+			ActiveMonitors: make(map[string]bool),
+			Ctx:            appCtx,
+			Cancel:         appCancel,
 		}
 
-		appWg.Add(1)
+		app.Wg.Add(1)
 		app.trackTorrent("hash") // should return immediately after login fails
 	})
 
@@ -278,17 +282,19 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		}))
 		defer ts.Close()
 
+		appCtx, appCancel := context.WithCancel(context.Background())
 		app := &App{
 			Config: &Config{
 				QbitHost: ts.URL,
 				PollInt:  10 * time.Millisecond,
 			},
+			ActiveMonitors: make(map[string]bool),
+			Ctx:            appCtx,
+			Cancel:         appCancel,
 		}
+		defer app.Cancel()
 
-		appCtx, appCancel = context.WithCancel(context.Background())
-		defer appCancel()
-
-		appWg.Add(1)
+		app.Wg.Add(1)
 		app.trackTorrent("hash") // should fetch once, get nil, log removed and return
 	})
 
@@ -299,20 +305,23 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		}))
 		defer ts.Close()
 
+		appCtx, appCancel := context.WithCancel(context.Background())
 		app := &App{
 			Config: &Config{
 				QbitHost: ts.URL,
 				PollInt:  10 * time.Millisecond,
 			},
+			ActiveMonitors: make(map[string]bool),
+			Ctx:            appCtx,
+			Cancel:         appCancel,
 		}
 
-		appCtx, appCancel = context.WithCancel(context.Background())
 		go func() {
 			time.Sleep(50 * time.Millisecond)
-			appCancel() // Break the loop
+			app.Cancel() // Break the loop
 		}()
 
-		appWg.Add(1)
+		app.Wg.Add(1)
 		app.trackTorrent("hash") // fetch fails, continues loop, then cancel triggers break
 	})
 }

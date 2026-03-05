@@ -21,16 +21,16 @@ func (a *App) handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mutex.Lock()
-	if activeMonitors[hash] {
-		mutex.Unlock()
+	a.Mutex.Lock()
+	if a.ActiveMonitors[hash] {
+		a.Mutex.Unlock()
 		_, _ = fmt.Fprintf(w, "Already tracking %q", hash) // %q escapes newlines to prevent response manipulation
 		return
 	}
-	activeMonitors[hash] = true
-	mutex.Unlock()
+	a.ActiveMonitors[hash] = true
+	a.Mutex.Unlock()
 
-	appWg.Add(1)
+	a.Wg.Add(1)
 	go a.trackTorrent(hash)
 
 	w.WriteHeader(200)
