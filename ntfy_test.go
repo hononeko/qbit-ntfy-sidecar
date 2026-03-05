@@ -59,47 +59,34 @@ func TestSendNtfy(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
-	// Override global config
-	oldServer := ntfyServer
-	oldTopic := ntfyTopic
-	oldUser := ntfyUser
-	oldPass := ntfyPass
-
-	t.Cleanup(func() {
-		ntfyServer = oldServer
-		ntfyTopic = oldTopic
-		ntfyUser = oldUser
-		ntfyPass = oldPass
-	})
-
-	ntfyServer = ts.URL
-	ntfyTopic = "test_topic"
+	cfg := &Config{
+		NtfyServer: ts.URL,
+		NtfyTopic:  "test_topic",
+	}
 
 	// 1. Test standard notification (no auth)
-	sendNtfy("Test Title", "Test Message", "tag", "id", "3")
+	sendNtfy(cfg, "Test Title", "Test Message", "tag", "id", "3")
 
 	// 2. Test authenticated notification
-	ntfyTopic = "auth_topic"
-	ntfyUser = "testuser"
-	ntfyPass = "testpass"
-	sendNtfy("Auth Title", "Auth Message", "tag", "id", "3")
+	cfg.NtfyTopic = "auth_topic"
+	cfg.NtfyUser = "testuser"
+	cfg.NtfyPass = "testpass"
+	sendNtfy(cfg, "Auth Title", "Auth Message", "tag", "id", "3")
 }
 
 func TestSendNtfy_Error(t *testing.T) {
-	oldServer := ntfyServer
-	ntfyServer = "http://127.0.0.1:0" // Invalid URL triggers failure
-	t.Cleanup(func() { ntfyServer = oldServer })
-
+	cfg := &Config{NtfyServer: "http://127.0.0.1:0"} // Invalid URL triggers failure
 	// This should log an error and return without panicking
-	sendNtfy("Fail", "Fail", "tag", "1", "3")
+	sendNtfy(cfg, "Fail", "Fail", "tag", "1", "3")
 }
 
 func TestSendUpdate(t *testing.T) {
+	var expectedFormat string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		msg := string(body)
 
-		if progressFormat == "percent" {
+		if expectedFormat == "percent" {
 			if !strings.Contains(msg, "Progress: 50%") {
 				t.Errorf("Expected percent format, got: %s", msg)
 			}
@@ -112,19 +99,21 @@ func TestSendUpdate(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
-	oldServer := ntfyServer
-	ntfyServer = ts.URL
-	ntfyTopic = "test_topic"
-	ntfyPrioProg = "2"
-	t.Cleanup(func() { ntfyServer = oldServer })
+	cfg := &Config{
+		NtfyServer:   ts.URL,
+		NtfyTopic:    "test_topic",
+		NtfyPrioProg: "2",
+	}
 
 	torrent := &Torrent{Hash: "123", Name: "Test", DlSpeed: 1048576, Eta: 60} // 1MB/s
 
-	progressFormat = "bar"
-	sendUpdate(torrent, 50)
+	cfg.ProgressFormat = "bar"
+	expectedFormat = "bar"
+	sendUpdate(cfg, torrent, 50)
 
-	progressFormat = "percent"
-	sendUpdate(torrent, 50)
+	cfg.ProgressFormat = "percent"
+	expectedFormat = "percent"
+	sendUpdate(cfg, torrent, 50)
 }
 
 func TestSendComplete(t *testing.T) {
@@ -140,12 +129,12 @@ func TestSendComplete(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
-	oldServer := ntfyServer
-	ntfyServer = ts.URL
-	ntfyTopic = "test_topic"
-	ntfyPrioComp = "3"
-	t.Cleanup(func() { ntfyServer = oldServer })
+	cfg := &Config{
+		NtfyServer:   ts.URL,
+		NtfyTopic:    "test_topic",
+		NtfyPrioComp: "3",
+	}
 
 	torrent := &Torrent{Hash: "123", Name: "Test"}
-	sendComplete(torrent)
+	sendComplete(cfg, torrent)
 }

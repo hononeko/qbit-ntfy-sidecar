@@ -2,9 +2,16 @@ package main
 
 import (
 	"math"
+	"regexp"
 	"strings"
 	"time"
 )
+
+var validHashRx = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+
+func IsValidHash(hash string) bool {
+	return validHashRx.MatchString(hash)
+}
 
 func drawProgressBar(pct int) string {
 	width := 10

@@ -9,15 +9,15 @@ import (
 	"strings"
 )
 
-func handleTrackRequest(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	hash := r.URL.Query().Get("hash")
-	if hash == "" {
-		http.Error(w, "Missing 'hash' query parameter", 400)
+	if hash == "" || !IsValidHash(hash) {
+		http.Error(w, "Missing or invalid 'hash' query parameter", 400)
 		return
 	}
 
@@ -31,13 +31,13 @@ func handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 	mutex.Unlock()
 
 	appWg.Add(1)
-	go trackTorrent(hash)
+	go a.trackTorrent(hash)
 
 	w.WriteHeader(200)
 	_, _ = fmt.Fprintf(w, "Tracking started for %q", hash) // %q escapes input
 }
 
-func ipFilterMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func (a *App) ipFilterMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		clientIPStr, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
@@ -58,7 +58,7 @@ func ipFilterMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		clientIP = clientIP.Unmap()
 
 		allowed := false
-		for _, subnet := range allowedSubnets {
+		for _, subnet := range a.Config.AllowedSubnets {
 			if subnet.Contains(clientIP) {
 				allowed = true
 				break

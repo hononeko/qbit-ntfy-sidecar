@@ -20,7 +20,7 @@ var (
 	appWg          sync.WaitGroup
 )
 
-func startupScan() {
+func (a *App) startupScan() {
 	defer appWg.Done()
 
 	// Retry loop to wait for qBittorrent to be ready
@@ -48,8 +48,8 @@ func startupScan() {
 		}
 
 		// 1. Auth (if required)
-		if qbitUser != "" && qbitPass != "" {
-			if err := login(client); err != nil {
+		if a.Config.QbitUser != "" && a.Config.QbitPass != "" {
+			if err := login(client, a.Config); err != nil {
 				log.Printf("Startup: Auth failed (%v). Retrying in 10s...", err)
 				if sleepOrExit(10 * time.Second) {
 					return
@@ -59,7 +59,7 @@ func startupScan() {
 		}
 
 		// 2. Fetch Active Torrents
-		resp, err := client.Get(qbitHost + "/api/v2/torrents/info?filter=downloading")
+		resp, err := client.Get(a.Config.QbitHost + "/api/v2/torrents/info?filter=downloading")
 		if err != nil {
 			log.Printf("Startup: Connection failed (%v). Retrying in 10s...", err)
 			if sleepOrExit(10 * time.Second) {
@@ -95,9 +95,9 @@ func startupScan() {
 			if !activeMonitors[t.Hash] {
 				activeMonitors[t.Hash] = true
 				mutex.Unlock()
-				log.Printf("Startup: Resuming monitor for %s (%s)", t.Name, t.Hash)
+				log.Printf("Startup: Resuming monitor for %q (%q)", t.Name, t.Hash)
 				appWg.Add(1)
-				go trackTorrent(t.Hash)
+				go a.trackTorrent(t.Hash)
 			} else {
 				mutex.Unlock()
 			}
@@ -108,7 +108,7 @@ func startupScan() {
 	}
 }
 
-func trackTorrent(hash string) {
+func (a *App) trackTorrent(hash string) {
 	defer appWg.Done()
 	defer func() {
 		mutex.Lock()
@@ -121,19 +121,19 @@ func trackTorrent(hash string) {
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
 
 	// Login only if credentials are provided
-	if qbitUser != "" && qbitPass != "" {
-		if err := login(client); err != nil {
+	if a.Config.QbitUser != "" && a.Config.QbitPass != "" {
+		if err := login(client, a.Config); err != nil {
 			log.Printf("[%q] Auth failed: %v", hash, err)
 			return
 		}
 	}
 
-	ticker := time.NewTicker(pollInt)
+	ticker := time.NewTicker(a.Config.PollInt)
 	defer ticker.Stop()
 
 	// Fetch info immediately to get the name for logging
 	// We'll retry in the loop if this fails, but it's nice to log early if possible
-	startInfo, err := getTorrentInfo(client, hash)
+	startInfo, err := getTorrentInfo(client, a.Config, hash)
 	if err == nil && startInfo != nil {
 		log.Printf("[%q] Monitor started for: %q", hash, startInfo.Name)
 	} else {
@@ -151,7 +151,7 @@ func trackTorrent(hash string) {
 			// Continue with logic below
 		}
 
-		t, err := getTorrentInfo(client, hash)
+		t, err := getTorrentInfo(client, a.Config, hash)
 		if err != nil {
 			log.Printf("[%q] Error: %v", hash, err)
 			continue
@@ -166,15 +166,15 @@ func trackTorrent(hash string) {
 		// Update Notification if progress changed
 		if pct > lastPct {
 			lastPct = pct
-			sendUpdate(t, pct)
+			sendUpdate(a.Config, t, pct)
 		}
 
 		// Check Completion
 		// qBittorrent states: upload, uploading, upLO, pausedUP, completed, etc.
 		if pct >= 100 || strings.Contains(t.State, "up") || t.State == "completed" {
 			log.Printf("[%q] Torrent finished (%q). Stopping monitor.", hash, t.Name)
-			if notifyComplete {
-				sendComplete(t)
+			if a.Config.NotifyComplete {
+				sendComplete(a.Config, t)
 			}
 			return
 		}

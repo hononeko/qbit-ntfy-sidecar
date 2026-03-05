@@ -71,11 +71,9 @@ func TestGetEnvInt(t *testing.T) {
 }
 
 func TestLoadConfig(t *testing.T) {
-	// Backup and cleanup
 	defer func() {
 		_ = os.Unsetenv("NTFY_TOPIC")
 		_ = os.Unsetenv("ALLOWED_SUBNETS")
-		allowedSubnets = nil
 	}()
 
 	// Mock required env var
@@ -83,30 +81,29 @@ func TestLoadConfig(t *testing.T) {
 
 	// Test 1: Empty Subnets ensures allowedSubnets is nil/empty and Defaults apply
 	_ = os.Setenv("ALLOWED_SUBNETS", "")
-	loadConfig()
+	cfg := loadConfig()
 
-	if ntfyTopic != "test_topic" {
-		t.Errorf("expected topic 'test_topic', got '%s'", ntfyTopic)
+	if cfg.NtfyTopic != "test_topic" {
+		t.Errorf("expected topic 'test_topic', got '%s'", cfg.NtfyTopic)
 	}
-	if len(allowedSubnets) != 0 {
-		t.Errorf("expected 0 subnets, got %d", len(allowedSubnets))
+	if len(cfg.AllowedSubnets) != 0 {
+		t.Errorf("expected 0 subnets, got %d", len(cfg.AllowedSubnets))
 	}
-	if pollInt != 5*time.Second {
-		t.Errorf("expected 5s poll interval, got %v", pollInt)
+	if cfg.PollInt != 5*time.Second {
+		t.Errorf("expected 5s poll interval, got %v", cfg.PollInt)
 	}
 
 	// Test 2: Invalid Subnets are ignored, valid ones are parsed
 	_ = os.Setenv("ALLOWED_SUBNETS", "invalid,192.168.1.0/24,10.0.0.1,fe80::1")
-	allowedSubnets = nil // Reset state
-	loadConfig()
+	cfg = loadConfig()
 
-	if len(allowedSubnets) != 3 {
-		t.Errorf("expected 3 parsed subnets, got %d", len(allowedSubnets))
+	if len(cfg.AllowedSubnets) != 3 {
+		t.Errorf("expected 3 parsed subnets, got %d", len(cfg.AllowedSubnets))
 	}
 
 	// Check if the single IPs were expanded correctly
 	expectedMasks := []int{24, 32, 128} // /24, /32 (IPv4 single), /128 (IPv6 single)
-	for i, subnet := range allowedSubnets {
+	for i, subnet := range cfg.AllowedSubnets {
 		if subnet.Bits() != expectedMasks[i] {
 			t.Errorf("subnet %d expected mask /%d, got /%d", i, expectedMasks[i], subnet.Bits())
 		}
