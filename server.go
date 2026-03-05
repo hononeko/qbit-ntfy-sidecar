@@ -24,7 +24,7 @@ func handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 	mutex.Lock()
 	if activeMonitors[hash] {
 		mutex.Unlock()
-		_, _ = fmt.Fprintf(w, "Already tracking %s", hash)
+		_, _ = fmt.Fprintf(w, "Already tracking %q", hash) // %q escapes newlines to prevent response manipulation
 		return
 	}
 	activeMonitors[hash] = true
@@ -34,7 +34,7 @@ func handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 	go trackTorrent(hash)
 
 	w.WriteHeader(200)
-	_, _ = fmt.Fprintf(w, "Tracking started for %s", hash)
+	_, _ = fmt.Fprintf(w, "Tracking started for %q", hash) // %q escapes input
 }
 
 func ipFilterMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -66,7 +66,7 @@ func ipFilterMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if !allowed {
-			log.Printf("Blocked unauthorized request from %s", r.RemoteAddr)
+			log.Printf("Blocked unauthorized request from %q", r.RemoteAddr) // %q escapes newlines to prevent log injection
 			http.Error(w, "Forbidden: Unauthorized IP", http.StatusForbidden)
 			return
 		}
