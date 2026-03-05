@@ -93,6 +93,14 @@ func TestGetTorrentInfo(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("Client Error", func(t *testing.T) {
+		qbitHost = "http://127.0.0.1:0" // Invalid port causes immediate connection refused
+		_, err := getTorrentInfo(http.DefaultClient, "123")
+		if err == nil {
+			t.Error("Expected error, got nil")
+		}
+	})
 }
 
 func TestLogin(t *testing.T) {
@@ -147,4 +155,12 @@ func TestLogin(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("Client Error", func(t *testing.T) {
+		qbitHost = "http://127.0.0.1:0"
+		err := login(http.DefaultClient)
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+	})
 }

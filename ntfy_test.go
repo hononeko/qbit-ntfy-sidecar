@@ -85,6 +85,15 @@ func TestSendNtfy(t *testing.T) {
 	sendNtfy("Auth Title", "Auth Message", "tag", "id", "3")
 }
 
+func TestSendNtfy_Error(t *testing.T) {
+	oldServer := ntfyServer
+	ntfyServer = "http://127.0.0.1:0" // Invalid URL triggers failure
+	t.Cleanup(func() { ntfyServer = oldServer })
+
+	// This should log an error and return without panicking
+	sendNtfy("Fail", "Fail", "tag", "1", "3")
+}
+
 func TestSendUpdate(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
