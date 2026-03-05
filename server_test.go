@@ -141,14 +141,14 @@ func TestHandleTrackRequest(t *testing.T) {
 		{
 			name:           "Valid POST",
 			method:         "POST",
-			hash:           "testhash",
+			hash:           "1234567890abcdef1234567890abcdef12345678",
 			preTrack:       false,
 			expectedStatus: 200,
 		},
 		{
 			name:           "Invalid Method GET",
 			method:         "GET",
-			hash:           "testhash",
+			hash:           "1234567890abcdef1234567890abcdef12345678",
 			preTrack:       false,
 			expectedStatus: http.StatusMethodNotAllowed,
 		},
@@ -162,7 +162,7 @@ func TestHandleTrackRequest(t *testing.T) {
 		{
 			name:           "Already Tracking Hash",
 			method:         "POST",
-			hash:           "testhash",
+			hash:           "1234567890abcdef1234567890abcdef12345678",
 			preTrack:       true,
 			expectedStatus: 200,
 		},
