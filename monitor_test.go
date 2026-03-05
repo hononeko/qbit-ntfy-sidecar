@@ -182,3 +182,168 @@ func TestTrackTorrent(t *testing.T) {
 		t.Fatal("trackTorrent failed to exit upon completion")
 	}
 }
+
+func TestStartupScan_Errors(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler func(w http.ResponseWriter, r *http.Request)
+		auth    bool
+	}{
+		{
+			name: "Auth Failure",
+			auth: true,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(401) // mock auth fail string check
+				_, _ = fmt.Fprintln(w, "Fails.")
+			},
+		},
+		{
+			name: "API Error 500",
+			auth: false,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(500)
+			},
+		},
+		{
+			name: "JSON Decode Error",
+			auth: false,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(200)
+				_, _ = fmt.Fprintln(w, `[{"hash": invalid_json`)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(tt.handler))
+
+			// Override globals
+			oldHost := qbitHost
+			oldUser := qbitUser
+			oldPass := qbitPass
+			qbitHost = ts.URL
+			if tt.auth {
+				qbitUser = "admin"
+				qbitPass = "admin"
+			} else {
+				qbitUser = ""
+				qbitPass = ""
+			}
+			t.Cleanup(func() {
+				qbitHost = oldHost
+				qbitUser = oldUser
+				qbitPass = oldPass
+				ts.Close()
+			})
+
+			appCtx, appCancel = context.WithCancel(context.Background())
+
+			// We will cancel the context shortly after starting, which causes sleepOrExit to trigger the exit path naturally
+			go func() {
+				time.Sleep(50 * time.Millisecond) // Give it enough time to hit the error and enter sleepOrExit
+				appCancel()
+			}()
+
+			appWg.Add(1)
+			startupScan() // this will block until appCancel fires inside sleepOrExit
+		})
+	}
+
+	// Test Connection Failed
+	t.Run("Connection Failed", func(t *testing.T) {
+		oldHost := qbitHost
+		qbitHost = "http://127.0.0.1:0"
+		qbitUser = ""
+		qbitPass = ""
+		t.Cleanup(func() {
+			qbitHost = oldHost
+		})
+
+		appCtx, appCancel = context.WithCancel(context.Background())
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			appCancel()
+		}()
+
+		appWg.Add(1)
+		startupScan()
+	})
+}
+
+func TestTrackTorrent_Errors(t *testing.T) {
+	t.Run("Auth Failure", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(401)
+			_, _ = fmt.Fprintln(w, "Fails.")
+		}))
+		defer ts.Close()
+
+		oldHost := qbitHost
+		qbitHost = ts.URL
+		qbitUser = "admin"
+		qbitPass = "admin"
+		t.Cleanup(func() {
+			qbitHost = oldHost
+			qbitUser = ""
+			qbitPass = ""
+		})
+
+		appWg.Add(1)
+		trackTorrent("hash") // should return immediately after login fails
+	})
+
+	t.Run("Torrent Removed", func(t *testing.T) {
+		// Mock API returns empty array (not found)
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			_, _ = fmt.Fprintln(w, "[]")
+		}))
+		defer ts.Close()
+
+		oldHost := qbitHost
+		qbitHost = ts.URL
+		qbitUser = ""
+		qbitPass = ""
+		oldPoll := pollInt
+		pollInt = 10 * time.Millisecond
+		t.Cleanup(func() {
+			qbitHost = oldHost
+			pollInt = oldPoll
+		})
+
+		appCtx, appCancel = context.WithCancel(context.Background())
+		defer appCancel()
+
+		appWg.Add(1)
+		trackTorrent("hash") // should fetch once, get nil, log removed and return
+	})
+
+	t.Run("API Error Loop Break", func(t *testing.T) {
+		// Mock API returning 500, simulating error in track loop
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(500)
+		}))
+		defer ts.Close()
+
+		oldHost := qbitHost
+		qbitHost = ts.URL
+		qbitUser = ""
+		qbitPass = ""
+		oldPoll := pollInt
+		pollInt = 10 * time.Millisecond
+		t.Cleanup(func() {
+			qbitHost = oldHost
+			pollInt = oldPoll
+		})
+
+		appCtx, appCancel = context.WithCancel(context.Background())
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			appCancel() // Break the loop
+		}()
+
+		appWg.Add(1)
+		trackTorrent("hash") // fetch fails, continues loop, then cancel triggers break
+	})
+}
