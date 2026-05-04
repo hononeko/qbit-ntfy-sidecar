@@ -3,7 +3,8 @@
   "extends": [
     "config:recommended",
     ":semanticCommits",
-    "mergeConfidence:all-badges"
+    "mergeConfidence:all-badges",
+    "helpers:pinGitHubActionDigests"
   ],
   "dependencyDashboard": true,
   "timezone": "Europe/Chisinau",
