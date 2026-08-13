@@ -83,9 +83,13 @@ func (a *App) startupScan() {
 		if a.ActiveMonitors == nil {
 			a.ActiveMonitors = make(map[string]bool)
 		}
+		var toTrack []string
 		for _, t := range torrents {
-			a.ActiveMonitors[t.Hash] = true
-			log.Printf("Startup: Resuming monitor for %q (%q)", t.Name, t.Hash)
+			if !a.ActiveMonitors[t.Hash] {
+				a.ActiveMonitors[t.Hash] = true
+				toTrack = append(toTrack, t.Hash)
+				log.Printf("Startup: Resuming monitor for %q (%q)", t.Name, t.Hash)
+			}
 		}
 		a.Mutex.Unlock()
 
@@ -94,9 +98,9 @@ func (a *App) startupScan() {
 			go a.runGroupedCoordinator()
 			a.wakeCoordinator()
 		} else {
-			for _, t := range torrents {
+			for _, hash := range toTrack {
 				a.Wg.Add(1)
-				go a.trackTorrent(t.Hash)
+				go a.trackTorrent(hash)
 			}
 		}
 
@@ -213,17 +217,23 @@ func (a *App) runGroupedCoordinator() {
 				}
 			} else {
 				tInfo, err := getTorrentInfo(client, a.Config, h)
-				if err == nil && tInfo != nil {
-					pct := int(tInfo.Progress * 100)
-					if pct >= 100 || strings.Contains(tInfo.State, "up") || tInfo.State == "completed" {
-						a.handleTorrentCompleted(tInfo)
-					} else {
-						activeList = append(activeList, *tInfo)
-					}
-				} else {
+				if err != nil {
+					log.Printf("Coordinator: Error fetching info for %q: %v (will retry)", h, err)
+					continue
+				}
+				if tInfo == nil {
+					log.Printf("Coordinator: Torrent %q removed from qBittorrent. Stopping monitor.", h)
 					a.Mutex.Lock()
 					delete(a.ActiveMonitors, h)
 					a.Mutex.Unlock()
+					continue
+				}
+
+				pct := int(tInfo.Progress * 100)
+				if pct >= 100 || strings.Contains(tInfo.State, "up") || tInfo.State == "completed" {
+					a.handleTorrentCompleted(tInfo)
+				} else {
+					activeList = append(activeList, *tInfo)
 				}
 			}
 		}
@@ -287,6 +297,9 @@ func (a *App) trackTorrent(hash string) {
 		t, err := getTorrentInfo(client, a.Config, hash)
 		if err != nil {
 			log.Printf("[%q] Error: %v", hash, err)
+			if a.Config.QbitUser != "" && a.Config.QbitPass != "" && (strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "403")) {
+				_ = login(client, a.Config)
+			}
 			continue
 		}
 		if t == nil {

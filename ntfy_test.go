@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -85,6 +86,22 @@ func TestSendNtfy_Error(t *testing.T) {
 	cfg := &Config{NtfyServer: "http://127.0.0.1:0"} // Invalid URL triggers failure
 	// This should log an error and return without panicking
 	sendNtfy(cfg, "Fail", "Fail", "tag", "1", "3")
+}
+
+func TestSendNtfy_HTTPErrorCodes(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = fmt.Fprintln(w, `{"error":"rate limit exceeded"}`)
+	}))
+	t.Cleanup(ts.Close)
+
+	cfg := &Config{
+		NtfyServer: ts.URL,
+		NtfyTopic:  "test_topic",
+	}
+
+	// Should safely log status 429 without panicking
+	sendNtfy(cfg, "Rate Limit", "Rate Limit Test", "tag", "id", "3")
 }
 
 func TestSendUpdate(t *testing.T) {

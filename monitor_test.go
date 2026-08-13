@@ -234,6 +234,103 @@ func TestGroupedCoordinator_Flow(t *testing.T) {
 	}
 }
 
+func TestGroupedCoordinator_NetworkErrorResilience(t *testing.T) {
+	var stage int
+	var stageMutex sync.Mutex
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stageMutex.Lock()
+		curStage := stage
+		stageMutex.Unlock()
+
+		// Not in filter=downloading
+		if strings.Contains(r.URL.Path, "filter=downloading") {
+			w.WriteHeader(200)
+			_, _ = fmt.Fprintln(w, `[]`)
+			return
+		}
+
+		// Individual query for hash
+		if strings.Contains(r.URL.Path, "torrents/info") {
+			switch curStage {
+			case 0:
+				// Simulate transient error 500
+				w.WriteHeader(500)
+			case 1:
+				// Success (completed)
+				w.WriteHeader(200)
+				_, _ = fmt.Fprintln(w, `[{"hash":"t1","name":"Torrent 1","progress":1.0,"eta":0,"dlspeed":0,"state":"completed"}]`)
+			}
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer ts.Close()
+
+	var completionSent bool
+	var ntfyMutex sync.Mutex
+	ntfyTs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ntfyMutex.Lock()
+		if r.Header.Get("Title") == "Download Complete" {
+			completionSent = true
+		}
+		ntfyMutex.Unlock()
+		w.WriteHeader(200)
+	}))
+	defer ntfyTs.Close()
+
+	appCtx, appCancel := context.WithCancel(context.Background())
+	app := &App{
+		Config: &Config{
+			NtfyServer:       ntfyTs.URL,
+			NtfyTopic:        "test",
+			QbitHost:         ts.URL,
+			GroupUpdateInt:   20 * time.Millisecond,
+			NotificationMode: "grouped",
+			NotifyComplete:   true,
+		},
+		ActiveMonitors: map[string]bool{"t1": true},
+		Completed:      make(map[string]bool),
+		WakeCh:         make(chan struct{}, 1),
+		Ctx:            appCtx,
+		Cancel:         appCancel,
+	}
+	defer app.Cancel()
+
+	app.Wg.Add(1)
+	go app.runGroupedCoordinator()
+
+	// Stage 0: 500 error on hash query
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify t1 is still tracked (not deleted due to 500 error)
+	app.Mutex.Lock()
+	stillTracked := app.ActiveMonitors["t1"]
+	app.Mutex.Unlock()
+
+	if !stillTracked {
+		t.Error("Expected t1 to still be tracked after transient network error")
+	}
+
+	// Stage 1: Success on subsequent retry
+	stageMutex.Lock()
+	stage = 1
+	stageMutex.Unlock()
+	app.wakeCoordinator()
+	time.Sleep(60 * time.Millisecond)
+
+	app.Cancel()
+	app.Wg.Wait()
+
+	ntfyMutex.Lock()
+	sent := completionSent
+	ntfyMutex.Unlock()
+
+	if !sent {
+		t.Error("Expected completion notification after recovering from transient network error")
+	}
+}
+
 func TestTrackTorrent_IndividualThrottling(t *testing.T) {
 	var stage int
 	var stageMutex sync.Mutex

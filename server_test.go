@@ -174,6 +174,20 @@ func TestHandleTrackRequest(t *testing.T) {
 			preTrack:       false,
 			expectedStatus: 200,
 		},
+		{
+			name:           "Invalid Hash Format Non-Hex",
+			method:         "POST",
+			hash:           "1234567890abcdef1234567890abcdef1234567g",
+			preTrack:       false,
+			expectedStatus: 400,
+		},
+		{
+			name:           "Invalid Hash Format Too Short",
+			method:         "POST",
+			hash:           "12345",
+			preTrack:       false,
+			expectedStatus: 400,
+		},
 	}
 
 	for _, tt := range tests {

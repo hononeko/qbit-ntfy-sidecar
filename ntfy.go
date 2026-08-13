@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 )
+
+var ntfyClient = &http.Client{Timeout: 5 * time.Second}
 
 func formatGroupedUpdate(cfg *Config, torrents []Torrent) (string, string) {
 	totalSpeed := 0
@@ -100,11 +103,15 @@ func sendNtfy(cfg *Config, title, msg, tag, id, priority string) {
 		req.SetBasicAuth(cfg.NtfyUser, cfg.NtfyPass)
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := ntfyClient.Do(req)
 	if err != nil {
 		log.Printf("Failed to send ntfy notification: %v", err)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("ntfy server returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
 }

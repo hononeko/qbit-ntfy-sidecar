@@ -27,7 +27,7 @@ func drawProgressBar(pct int) string {
 }
 
 func formatDuration(sec int) string {
-	if sec >= 8640000 {
+	if sec < 0 || sec >= 8640000 {
 		return "∞"
 	}
 	return (time.Duration(sec) * time.Second).String()
