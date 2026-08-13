@@ -9,6 +9,8 @@ A lightweight Go sidecar for Kubernetes to monitor qBittorrent downloads and sen
 ## Features
 
 - **Live Grouped Notifications**: Aggregates all active downloads into a single, updating live notification card (iOS/APNs friendly to avoid push rate limits).
+- **1-Click WebUI Action Buttons**: Adds interactive "Open WebUI" buttons and direct tap URLs to notifications (`QBIT_PUBLIC_URL`).
+- **Top-N Overflow & Status Badges**: Cleanly caps large download queues (`MAX_DISPLAY_TORRENTS`) and displays `[⏳ Stalled]` / `[⏸ Paused]` indicators.
 - **Event-Driven**: Only runs when triggered by qBittorrent (zero idle CPU usage).
 - **Startup Sync**: Automatically resumes monitoring active downloads on container restart.
 - **Smart Rate-Limiting**: Configurable progress step thresholds and minimum update intervals.
@@ -22,6 +24,7 @@ The sidecar supports three notification modes configured via `NOTIFICATION_MODE`
 
 1. **`grouped` (Default & Recommended)**:
    - Aggregates all concurrent downloads into a single live notification card updated in-place every `GROUP_UPDATE_INTERVAL` (default: 15s).
+   - Automatically truncates queues exceeding `MAX_DISPLAY_TORRENTS` (default: 5) with an aggregate throughput summary footer (`... and X more active (Total: Y.Y MB/s)`).
    - Designed specifically for **iOS (iPhone) clients** receiving notifications via Apple Push Notification service (APNs) where high-frequency pushes quickly hit daily server limits.
    - When downloads finish, each completed torrent sends an auditable completion alert (if `NOTIFY_COMPLETE=true`), and the live card automatically updates when all downloads complete.
 2. **`individual`**:
@@ -70,6 +73,11 @@ containers:
         value: "https://ntfy.sh"
       - name: PROGRESS_FORMAT
         value: "bar" # or "percent"
+      - name: NOTIFICATION_MODE
+        value: "grouped"
+      # Optional: 1-click notification action button to open WebUI
+      # - name: QBIT_PUBLIC_URL
+      #   value: "https://qbit.example.com"
       # Optional: If you need Ntfy Auth
       # - name: NTFY_USER
       #   valueFrom: { secretKeyRef: { name: ntfy-secrets, key: username } }
@@ -102,6 +110,7 @@ services:
       - NTFY_SERVER=https://ntfy.sh
       - NOTIFICATION_MODE=grouped # grouped (recommended for iOS), individual, or completion_only
       - PROGRESS_FORMAT=bar # or percent
+      # - QBIT_PUBLIC_URL=https://qbit.example.com # Optional: 1-click WebUI button
     restart: unless-stopped
 ```
 
