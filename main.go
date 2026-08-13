@@ -14,10 +14,22 @@ import (
 type App struct {
 	Config         *Config
 	ActiveMonitors map[string]bool
+	Completed      map[string]bool
+	WakeCh         chan struct{}
 	Mutex          sync.Mutex
 	Wg             sync.WaitGroup
 	Ctx            context.Context
 	Cancel         context.CancelFunc
+}
+
+func (a *App) wakeCoordinator() {
+	if a.WakeCh == nil {
+		return
+	}
+	select {
+	case a.WakeCh <- struct{}{}:
+	default:
+	}
 }
 
 func main() {
@@ -27,6 +39,8 @@ func main() {
 	app := &App{
 		Config:         loadConfig(),
 		ActiveMonitors: make(map[string]bool),
+		Completed:      make(map[string]bool),
+		WakeCh:         make(chan struct{}, 1),
 		Ctx:            ctx,
 		Cancel:         cancel,
 	}

@@ -8,11 +8,27 @@ A lightweight Go sidecar for Kubernetes to monitor qBittorrent downloads and sen
 
 ## Features
 
+- **Live Grouped Notifications**: Aggregates all active downloads into a single, updating live notification card (iOS/APNs friendly to avoid push rate limits).
 - **Event-Driven**: Only runs when triggered by qBittorrent (zero idle CPU usage).
 - **Startup Sync**: Automatically resumes monitoring active downloads on container restart.
+- **Smart Rate-Limiting**: Configurable progress step thresholds and minimum update intervals.
 - **Real-time Progress**: Sends updates with ASCII progress bars or percentages.
-- **Completion Alerts**: Configurable priority notification when download finishes.
+- **Completion Alerts**: Configurable priority notification when a download finishes.
 - **Flexible Auth**: Supports both authenticated and localhost-bypass access to qBittorrent.
+
+## Notification Modes
+
+The sidecar supports three notification modes configured via `NOTIFICATION_MODE`:
+
+1. **`grouped` (Default & Recommended)**:
+   - Aggregates all concurrent downloads into a single live notification card updated in-place every `GROUP_UPDATE_INTERVAL` (default: 15s).
+   - Designed specifically for **iOS (iPhone) clients** receiving notifications via Apple Push Notification service (APNs) where high-frequency pushes quickly hit daily server limits.
+   - When downloads finish, each completed torrent sends an auditable completion alert (if `NOTIFY_COMPLETE=true`), and the live card automatically updates when all downloads complete.
+2. **`individual`**:
+   - Sends a dedicated updating notification per torrent.
+   - Uses `PROGRESS_STEP` (default: `25%`) and `MIN_UPDATE_INTERVAL` (default: `60s`) to prevent push floods.
+3. **`completion_only`**:
+   - Completely disables in-progress updates and only notifies when downloads finish.
 
 ## ⚠️ Security Warning
 
@@ -84,6 +100,7 @@ services:
       - QBIT_HOST=http://localhost:8080 # default works since it shares qbit's network
       - NTFY_TOPIC=my_downloads
       - NTFY_SERVER=https://ntfy.sh
+      - NOTIFICATION_MODE=grouped # grouped (recommended for iOS), individual, or completion_only
       - PROGRESS_FORMAT=bar # or percent
     restart: unless-stopped
 ```
@@ -110,6 +127,7 @@ services:
       - QBIT_HOST=http://qbittorrent:8080 # Use service name for host
       - NTFY_TOPIC=my_downloads
       - NTFY_SERVER=https://ntfy.sh
+      - NOTIFICATION_MODE=grouped
       - PROGRESS_FORMAT=bar # or percent
     restart: unless-stopped
 
@@ -165,21 +183,27 @@ The sidecar is event-driven. It needs to know _when_ to start monitoring a new t
 
 ## Environment Variables
 
-| Variable                 | Description                     | Default                 |
-| ------------------------ | ------------------------------- | ----------------------- |
-| `ALLOWED_SUBNETS`        | Subnets allowed to hit `/track` | `""` (Deny All)         |
-| `QBIT_HOST`              | qBittorrent API URL             | `http://localhost:8080` |
-| `QBIT_USER`              | Web UI Username (Optional)      | `""`                    |
-| `QBIT_PASS`              | Web UI Password (Optional)      | `""`                    |
-| `NTFY_TOPIC`             | Ntfy Topic Name (**REQUIRED**)  | `null`                  |
-| `NTFY_SERVER`            | Ntfy Server URL                 | `https://ntfy.sh`       |
-| `NTFY_USER`              | Ntfy Username (Optional)        | `""`                    |
-| `NTFY_PASS`              | Ntfy Password (Optional)        | `""`                    |
-| `NTFY_PRIORITY_PROGRESS` | Priority for progress updates   | `2` (Low)               |
-| `NTFY_PRIORITY_COMPLETE` | Priority for completion alerts  | `3` (Default)           |
-| `NOTIFY_COMPLETE`        | Send notification on completion | `true`                  |
-| `PROGRESS_FORMAT`        | Format: `bar` or `percent`      | `bar`                   |
-| `POLL_INTERVAL`          | Polling interval in seconds     | `5`                     |
+| Variable                 | Description                                                         | Default                 |
+| ------------------------ | ------------------------------------------------------------------- | ----------------------- |
+| `ALLOWED_SUBNETS`        | Subnets allowed to hit `/track`                                     | `""` (Deny All)         |
+| `QBIT_HOST`              | qBittorrent API URL                                                 | `http://localhost:8080` |
+| `QBIT_USER`              | Web UI Username (Optional)                                          | `""`                    |
+| `QBIT_PASS`              | Web UI Password (Optional)                                          | `""`                    |
+| `NTFY_TOPIC`             | Ntfy Topic Name (**REQUIRED**)                                      | `null`                  |
+| `NTFY_SERVER`            | Ntfy Server URL                                                     | `https://ntfy.sh`       |
+| `NTFY_USER`              | Ntfy Username (Optional)                                            | `""`                    |
+| `NTFY_PASS`              | Ntfy Password (Optional)                                            | `""`                    |
+| `NOTIFICATION_MODE`      | `grouped` (live card, recommended for iOS), `individual`, `completion_only` | `grouped`       |
+| `GROUP_UPDATE_INTERVAL`  | Interval in seconds between live grouped updates                    | `15`                    |
+| `PROGRESS_STEP`          | Minimum % progress jump before sending individual update (1-100)    | `25`                    |
+| `MIN_UPDATE_INTERVAL`    | Minimum cooldown in seconds between individual updates              | `60`                    |
+| `NTFY_LIVE_ID`           | Ntfy Message ID for grouped live notification card                  | `qbit-live-downloads`   |
+| `NOTIFY_PROGRESS`        | Send in-progress download updates                                   | `true`                  |
+| `NOTIFY_COMPLETE`        | Send notification on completion                                     | `true`                  |
+| `NTFY_PRIORITY_PROGRESS` | Priority for progress updates                                       | `2` (Low)               |
+| `NTFY_PRIORITY_COMPLETE` | Priority for completion alerts                                      | `3` (Default)           |
+| `PROGRESS_FORMAT`        | Format: `bar` or `percent`                                          | `bar`                   |
+| `POLL_INTERVAL`          | Polling interval for individual mode (seconds)                      | `5`                     |
 
 ## Building Locally
 
