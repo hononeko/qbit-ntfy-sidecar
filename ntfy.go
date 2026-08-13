@@ -11,6 +11,17 @@ import (
 
 var ntfyClient = &http.Client{Timeout: 5 * time.Second}
 
+func formatTorrentStatusBadge(t *Torrent) string {
+	stateLower := strings.ToLower(t.State)
+	if strings.Contains(stateLower, "pause") {
+		return " [⏸ Paused]"
+	}
+	if strings.Contains(stateLower, "stalled") || (t.DlSpeed == 0 && t.Progress > 0 && t.Progress < 1.0) {
+		return " [⏸ Stalled]"
+	}
+	return ""
+}
+
 func formatGroupedUpdate(cfg *Config, torrents []Torrent) (string, string) {
 	totalSpeed := 0
 	for _, t := range torrents {
@@ -25,16 +36,30 @@ func formatGroupedUpdate(cfg *Config, torrents []Torrent) (string, string) {
 		title = fmt.Sprintf("Downloading (%d items) • %.1f MB/s", len(torrents), totalSpeedMB)
 	}
 
+	maxDisplay := cfg.MaxDisplayTorrents
+	if maxDisplay <= 0 {
+		maxDisplay = 5
+	}
+
+	displayTorrents := torrents
+	overflowCount := 0
+	if len(torrents) > maxDisplay {
+		displayTorrents = torrents[:maxDisplay]
+		overflowCount = len(torrents) - maxDisplay
+	}
+
 	var sb strings.Builder
-	for i, t := range torrents {
+	for i, t := range displayTorrents {
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
 		pct := int(t.Progress * 100)
 		speed := float64(t.DlSpeed) / 1024 / 1024
 		eta := formatDuration(t.Eta)
+		badge := formatTorrentStatusBadge(&t)
 
 		sb.WriteString(t.Name)
+		sb.WriteString(badge)
 		sb.WriteString("\n")
 		if cfg.ProgressFormat == "percent" {
 			fmt.Fprintf(&sb, "%d%% • %.1f MB/s • ETA: %s", pct, speed, eta)
@@ -42,6 +67,10 @@ func formatGroupedUpdate(cfg *Config, torrents []Torrent) (string, string) {
 			bar := drawProgressBar(pct)
 			fmt.Fprintf(&sb, "%s %d%% • %.1f MB/s • ETA: %s", bar, pct, speed, eta)
 		}
+	}
+
+	if overflowCount > 0 {
+		fmt.Fprintf(&sb, "\n\n... and %d more active (Total: %.1f MB/s)", overflowCount, totalSpeedMB)
 	}
 
 	return title, sb.String()
@@ -62,13 +91,14 @@ func sendGroupedComplete(cfg *Config) {
 func sendUpdate(cfg *Config, t *Torrent, pct int) {
 	speed := float64(t.DlSpeed) / 1024 / 1024
 	eta := formatDuration(t.Eta)
+	badge := formatTorrentStatusBadge(t)
 
 	var msg string
 	if cfg.ProgressFormat == "percent" {
-		msg = fmt.Sprintf("Progress: %d%%\nSpeed: %.1f MB/s\nETA: %s", pct, speed, eta)
+		msg = fmt.Sprintf("Progress: %d%%%s\nSpeed: %.1f MB/s\nETA: %s", pct, badge, speed, eta)
 	} else {
 		bar := drawProgressBar(pct)
-		msg = fmt.Sprintf("%d%% %s\nSpeed: %.1f MB/s\nETA: %s", pct, bar, speed, eta)
+		msg = fmt.Sprintf("%d%% %s%s\nSpeed: %.1f MB/s\nETA: %s", pct, bar, badge, speed, eta)
 	}
 
 	sendNtfy(cfg, t.Name, msg, "arrow_down", "qbit-"+t.Hash, cfg.NtfyPrioProg)
@@ -97,6 +127,12 @@ func sendNtfy(cfg *Config, title, msg, tag, id, priority string) {
 		req.Header.Set("X-Message-ID", sanitizedID)
 		req.Header.Set("Message-ID", sanitizedID)
 		req.Header.Set("X-Sequence-ID", sanitizedID)
+	}
+
+	if cfg.QbitPublicURL != "" {
+		sanitizedURL := sanitizeHeader(cfg.QbitPublicURL)
+		req.Header.Set("Click", sanitizedURL)
+		req.Header.Set("Actions", sanitizeHeader(fmt.Sprintf("view, Open WebUI, %s, clear=true", sanitizedURL)))
 	}
 
 	if cfg.NtfyUser != "" && cfg.NtfyPass != "" {

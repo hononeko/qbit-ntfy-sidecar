@@ -189,6 +189,7 @@ The sidecar is event-driven. It needs to know _when_ to start monitoring a new t
 | `QBIT_HOST`              | qBittorrent API URL                                                 | `http://localhost:8080` |
 | `QBIT_USER`              | Web UI Username (Optional)                                          | `""`                    |
 | `QBIT_PASS`              | Web UI Password (Optional)                                          | `""`                    |
+| `QBIT_PUBLIC_URL`        | Public Web UI URL for 1-click notification action buttons (Optional)| `""`                    |
 | `NTFY_TOPIC`             | Ntfy Topic Name (**REQUIRED**)                                      | `null`                  |
 | `NTFY_SERVER`            | Ntfy Server URL                                                     | `https://ntfy.sh`       |
 | `NTFY_USER`              | Ntfy Username (Optional)                                            | `""`                    |
@@ -197,6 +198,7 @@ The sidecar is event-driven. It needs to know _when_ to start monitoring a new t
 | `GROUP_UPDATE_INTERVAL`  | Interval in seconds between live grouped updates                    | `15`                    |
 | `PROGRESS_STEP`          | Minimum % progress jump before sending individual update (1-100)    | `25`                    |
 | `MIN_UPDATE_INTERVAL`    | Minimum cooldown in seconds between individual updates              | `60`                    |
+| `MAX_DISPLAY_TORRENTS`   | Maximum number of individual torrents to list in grouped summary    | `5`                     |
 | `NTFY_LIVE_ID`           | Ntfy Message ID for grouped live notification card                  | `qbit-live-downloads`   |
 | `NOTIFY_PROGRESS`        | Send in-progress download updates                                   | `true`                  |
 | `NOTIFY_COMPLETE`        | Send notification on completion                                     | `true`                  |

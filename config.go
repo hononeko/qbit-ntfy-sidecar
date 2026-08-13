@@ -11,25 +11,27 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	QbitHost         string
-	QbitUser         string
-	QbitPass         string
-	NtfyServer       string
-	NtfyUser         string
-	NtfyPass         string
-	NtfyTopic        string
-	NtfyPrioProg     string
-	NtfyPrioComp     string
-	NotifyComplete   bool
-	NotifyProgress   bool
-	NotificationMode string // "grouped", "individual", "completion_only"
-	GroupUpdateInt   time.Duration
-	ProgressStep     int
-	MinUpdateInt     time.Duration
-	NtfyLiveID       string
-	ProgressFormat   string
-	PollInt          time.Duration
-	AllowedSubnets   []netip.Prefix
+	QbitHost           string
+	QbitUser           string
+	QbitPass           string
+	QbitPublicURL      string
+	NtfyServer         string
+	NtfyUser           string
+	NtfyPass           string
+	NtfyTopic          string
+	NtfyPrioProg       string
+	NtfyPrioComp       string
+	NotifyComplete     bool
+	NotifyProgress     bool
+	NotificationMode   string // "grouped", "individual", "completion_only"
+	GroupUpdateInt     time.Duration
+	ProgressStep       int
+	MinUpdateInt       time.Duration
+	MaxDisplayTorrents int
+	NtfyLiveID         string
+	ProgressFormat     string
+	PollInt            time.Duration
+	AllowedSubnets     []netip.Prefix
 }
 
 func loadConfig() *Config {
@@ -37,6 +39,7 @@ func loadConfig() *Config {
 	cfg.QbitHost = getEnv("QBIT_HOST", "http://localhost:8080")
 	cfg.QbitUser = getEnv("QBIT_USER", "")
 	cfg.QbitPass = getEnv("QBIT_PASS", "")
+	cfg.QbitPublicURL = strings.TrimRight(getEnv("QBIT_PUBLIC_URL", ""), "/")
 
 	cfg.NtfyServer = strings.TrimRight(getEnv("NTFY_SERVER", "https://ntfy.sh"), "/")
 	cfg.NtfyUser = getEnv("NTFY_USER", "")
@@ -75,6 +78,13 @@ func loadConfig() *Config {
 		minIntVal = 60
 	}
 	cfg.MinUpdateInt = time.Duration(minIntVal) * time.Second
+
+	maxDisplayVal := getEnvInt("MAX_DISPLAY_TORRENTS", 5)
+	if maxDisplayVal <= 0 {
+		log.Printf("Warning: Invalid MAX_DISPLAY_TORRENTS %d. Using default 5.", maxDisplayVal)
+		maxDisplayVal = 5
+	}
+	cfg.MaxDisplayTorrents = maxDisplayVal
 
 	cfg.NtfyLiveID = getEnv("NTFY_LIVE_ID", "qbit-live-downloads")
 	cfg.ProgressFormat = getEnv("PROGRESS_FORMAT", "bar") // "bar" or "percent"
