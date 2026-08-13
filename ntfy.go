@@ -37,10 +37,10 @@ func formatGroupedUpdate(cfg *Config, torrents []Torrent) (string, string) {
 		sb.WriteString(t.Name)
 		sb.WriteString("\n")
 		if cfg.ProgressFormat == "percent" {
-			sb.WriteString(fmt.Sprintf("%d%% • %.1f MB/s • ETA: %s", pct, speed, eta))
+			fmt.Fprintf(&sb, "%d%% • %.1f MB/s • ETA: %s", pct, speed, eta)
 		} else {
 			bar := drawProgressBar(pct)
-			sb.WriteString(fmt.Sprintf("%s %d%% • %.1f MB/s • ETA: %s", bar, pct, speed, eta))
+			fmt.Fprintf(&sb, "%s %d%% • %.1f MB/s • ETA: %s", bar, pct, speed, eta)
 		}
 	}
 
