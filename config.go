@@ -39,7 +39,7 @@ func loadConfig() *Config {
 	cfg.QbitHost = getEnv("QBIT_HOST", "http://localhost:8080")
 	cfg.QbitUser = getEnv("QBIT_USER", "")
 	cfg.QbitPass = getEnv("QBIT_PASS", "")
-	cfg.QbitPublicURL = strings.TrimRight(getEnv("QBIT_PUBLIC_URL", ""), "/")
+	cfg.QbitPublicURL = strings.TrimRight(strings.TrimSpace(getEnv("QBIT_PUBLIC_URL", "")), "/")
 
 	cfg.NtfyServer = strings.TrimRight(getEnv("NTFY_SERVER", "https://ntfy.sh"), "/")
 	cfg.NtfyUser = getEnv("NTFY_USER", "")

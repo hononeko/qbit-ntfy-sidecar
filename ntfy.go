@@ -17,7 +17,7 @@ func formatTorrentStatusBadge(t *Torrent) string {
 		return " [⏸ Paused]"
 	}
 	if strings.Contains(stateLower, "stalled") || (t.DlSpeed == 0 && t.Progress > 0 && t.Progress < 1.0) {
-		return " [⏸ Stalled]"
+		return " [⏳ Stalled]"
 	}
 	return ""
 }

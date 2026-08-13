@@ -267,6 +267,13 @@ func TestFormatGroupedUpdate_TopNOverflow(t *testing.T) {
 	if !strings.Contains(msg, "... and 2 more active (Total: 10.0 MB/s)") {
 		t.Errorf("missing or incorrect overflow footer: %q", msg)
 	}
+
+	// Exact boundary test (len == MaxDisplayTorrents)
+	exactTorrents := torrents[:2]
+	_, msgExact := formatGroupedUpdate(cfg, exactTorrents)
+	if strings.Contains(msgExact, "... and") {
+		t.Errorf("exact match should not contain overflow footer: %q", msgExact)
+	}
 }
 
 func TestFormatTorrentStatusBadge(t *testing.T) {
@@ -276,8 +283,13 @@ func TestFormatTorrentStatusBadge(t *testing.T) {
 	}
 
 	stalled := &Torrent{State: "stalledDL", DlSpeed: 0, Progress: 0.5}
-	if badge := formatTorrentStatusBadge(stalled); badge != " [⏸ Stalled]" {
+	if badge := formatTorrentStatusBadge(stalled); badge != " [⏳ Stalled]" {
 		t.Errorf("expected stalled badge, got %q", badge)
+	}
+
+	stalledHeuristic := &Torrent{State: "downloading", DlSpeed: 0, Progress: 0.5}
+	if badge := formatTorrentStatusBadge(stalledHeuristic); badge != " [⏳ Stalled]" {
+		t.Errorf("expected stalled heuristic badge, got %q", badge)
 	}
 
 	normal := &Torrent{State: "downloading", DlSpeed: 1024, Progress: 0.5}
