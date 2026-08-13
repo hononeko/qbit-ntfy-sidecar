@@ -167,6 +167,13 @@ func TestHandleTrackRequest(t *testing.T) {
 			preTrack:       true,
 			expectedStatus: 200,
 		},
+		{
+			name:           "Grouped Mode Wake",
+			method:         "POST",
+			hash:           "abcdef1234567890abcdef1234567890abcdef12",
+			preTrack:       false,
+			expectedStatus: 200,
+		},
 	}
 
 	for _, tt := range tests {
@@ -174,9 +181,12 @@ func TestHandleTrackRequest(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			app := &App{
 				Config: &Config{
-					PollInt: 10 * time.Millisecond,
+					PollInt:          10 * time.Millisecond,
+					NotificationMode: "grouped",
 				},
 				ActiveMonitors: make(map[string]bool),
+				Completed:      make(map[string]bool),
+				WakeCh:         make(chan struct{}, 1),
 				Ctx:            ctx,
 				Cancel:         cancel,
 			}

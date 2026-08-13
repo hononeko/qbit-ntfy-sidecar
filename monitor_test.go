@@ -11,8 +11,7 @@ import (
 	"time"
 )
 
-func TestStartupScan(t *testing.T) {
-	// Mock qBittorrent active downloads
+func TestStartupScan_Grouped(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "login") {
 			w.WriteHeader(200)
@@ -22,7 +21,6 @@ func TestStartupScan(t *testing.T) {
 
 		if strings.Contains(r.URL.Path, "torrents/info") {
 			w.WriteHeader(200)
-			// Return two active torrents
 			_, _ = fmt.Fprintln(w, `[
 				{"hash":"hash1","name":"Torrent 1","progress":0.5,"eta":60,"dlspeed":1024,"state":"downloading"},
 				{"hash":"hash2","name":"Torrent 2","progress":0.8,"eta":120,"dlspeed":2048,"state":"downloading"}
@@ -36,16 +34,20 @@ func TestStartupScan(t *testing.T) {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	app := &App{
 		Config: &Config{
-			QbitHost: ts.URL,
-			QbitUser: "admin",
-			QbitPass: "adminadmin",
-			PollInt:  100 * time.Millisecond,
+			QbitHost:         ts.URL,
+			QbitUser:         "admin",
+			QbitPass:         "adminadmin",
+			PollInt:          100 * time.Millisecond,
+			GroupUpdateInt:   100 * time.Millisecond,
+			NotificationMode: "grouped",
 		},
 		ActiveMonitors: make(map[string]bool),
+		Completed:      make(map[string]bool),
+		WakeCh:         make(chan struct{}, 1),
 		Ctx:            appCtx,
 		Cancel:         appCancel,
 	}
-	defer app.Cancel() // Ensure cleanup
+	defer app.Cancel()
 
 	// Run startupScan
 	app.Wg.Add(1)
@@ -65,10 +67,8 @@ func TestStartupScan(t *testing.T) {
 		t.Errorf("missing expected hashes in activeMonitors map")
 	}
 
-	// Wait for workers to cleanly exit via context cancellation
 	app.Cancel()
 
-	// Use a channel to prevent testing deadlocks
 	done := make(chan struct{})
 	go func() {
 		app.Wg.Wait()
@@ -77,17 +77,12 @@ func TestStartupScan(t *testing.T) {
 
 	select {
 	case <-done:
-		// Success
 	case <-time.After(2 * time.Second):
-		t.Fatal("startupScan or workers failed to exit gracefully")
+		t.Fatal("startupScan or coordinator failed to exit gracefully")
 	}
 }
 
-func TestTrackTorrent(t *testing.T) {
-	// Track state internally
-	var stage int
-	var stageMutex sync.Mutex
-
+func TestStartupScan_Individual(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "login") {
 			w.WriteHeader(200)
@@ -95,26 +90,80 @@ func TestTrackTorrent(t *testing.T) {
 			return
 		}
 
+		if strings.Contains(r.URL.Path, "torrents/info") {
+			w.WriteHeader(200)
+			_, _ = fmt.Fprintln(w, `[
+				{"hash":"hash1","name":"Torrent 1","progress":0.5,"eta":60,"dlspeed":1024,"state":"downloading"}
+			]`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer ts.Close()
+
+	appCtx, appCancel := context.WithCancel(context.Background())
+	app := &App{
+		Config: &Config{
+			QbitHost:         ts.URL,
+			PollInt:          50 * time.Millisecond,
+			NotificationMode: "individual",
+		},
+		ActiveMonitors: make(map[string]bool),
+		Completed:      make(map[string]bool),
+		Ctx:            appCtx,
+		Cancel:         appCancel,
+	}
+	defer app.Cancel()
+
+	app.Wg.Add(1)
+	app.startupScan()
+
+	app.Mutex.Lock()
+	hasHash1 := app.ActiveMonitors["hash1"]
+	app.Mutex.Unlock()
+
+	if !hasHash1 {
+		t.Errorf("expected hash1 in activeMonitors")
+	}
+
+	app.Cancel()
+	app.Wg.Wait()
+}
+
+func TestGroupedCoordinator_Flow(t *testing.T) {
+	var stage int
+	var stageMutex sync.Mutex
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		stageMutex.Lock()
-		currentStage := stage
+		curStage := stage
 		stageMutex.Unlock()
 
 		w.WriteHeader(200)
-		switch currentStage {
+		switch curStage {
 		case 0:
-			// Initial fetch (50% progress)
-			_, _ = fmt.Fprintln(w, `[{"hash":"testhash","name":"Test Torrent","progress":0.5,"eta":60,"dlspeed":1024,"state":"downloading"}]`)
+			// Active downloading
+			_, _ = fmt.Fprintln(w, `[
+				{"hash":"t1","name":"Torrent 1","progress":0.4,"eta":50,"dlspeed":1048576,"state":"downloading"}
+			]`)
 		case 1:
-			// Second fetch (100% progress -> complete)
-			_, _ = fmt.Fprintln(w, `[{"hash":"testhash","name":"Test Torrent","progress":1.0,"eta":0,"dlspeed":0,"state":"completed"}]`)
+			// Completed
+			_, _ = fmt.Fprintln(w, `[
+				{"hash":"t1","name":"Torrent 1","progress":1.0,"eta":0,"dlspeed":0,"state":"completed"}
+			]`)
+		case 2:
+			// Empty (no active downloads)
+			_, _ = fmt.Fprintln(w, `[]`)
 		}
 	}))
 	defer ts.Close()
 
-	// Mock Ntfy to capture completion
-	ntfyCalled := false
+	var ntfyTitles []string
+	var ntfyMutex sync.Mutex
 	ntfyTs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ntfyCalled = true
+		ntfyMutex.Lock()
+		ntfyTitles = append(ntfyTitles, r.Header.Get("Title"))
+		ntfyMutex.Unlock()
 		w.WriteHeader(200)
 	}))
 	defer ntfyTs.Close()
@@ -122,11 +171,122 @@ func TestTrackTorrent(t *testing.T) {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	app := &App{
 		Config: &Config{
-			NtfyServer:     ntfyTs.URL,
-			NtfyTopic:      "test",
-			QbitHost:       ts.URL,
-			PollInt:        10 * time.Millisecond,
-			NotifyComplete: true,
+			NtfyServer:       ntfyTs.URL,
+			NtfyTopic:        "test",
+			QbitHost:         ts.URL,
+			GroupUpdateInt:   20 * time.Millisecond,
+			NotificationMode: "grouped",
+			NotifyProgress:   true,
+			NotifyComplete:   true,
+			NtfyLiveID:       "qbit-live-test",
+			ProgressFormat:   "bar",
+		},
+		ActiveMonitors: map[string]bool{"t1": true},
+		Completed:      make(map[string]bool),
+		WakeCh:         make(chan struct{}, 1),
+		Ctx:            appCtx,
+		Cancel:         appCancel,
+	}
+	defer app.Cancel()
+
+	app.Wg.Add(1)
+	go app.runGroupedCoordinator()
+
+	// Initial active progress notification
+	time.Sleep(60 * time.Millisecond)
+
+	// Move to stage 1 (completed)
+	stageMutex.Lock()
+	stage = 1
+	stageMutex.Unlock()
+	app.wakeCoordinator()
+	time.Sleep(60 * time.Millisecond)
+
+	// Move to stage 2 (drained)
+	stageMutex.Lock()
+	stage = 2
+	stageMutex.Unlock()
+	app.wakeCoordinator()
+	time.Sleep(60 * time.Millisecond)
+
+	app.Cancel()
+	app.Wg.Wait()
+
+	ntfyMutex.Lock()
+	defer ntfyMutex.Unlock()
+
+	hasGroupUpdate := false
+	hasComplete := false
+	for _, title := range ntfyTitles {
+		if strings.Contains(title, "Downloading (1 item)") {
+			hasGroupUpdate = true
+		}
+		if title == "Download Complete" {
+			hasComplete = true
+		}
+	}
+
+	if !hasGroupUpdate {
+		t.Errorf("expected grouped live update title, got: %v", ntfyTitles)
+	}
+	if !hasComplete {
+		t.Errorf("expected completion notification, got: %v", ntfyTitles)
+	}
+}
+
+func TestTrackTorrent_IndividualThrottling(t *testing.T) {
+	var stage int
+	var stageMutex sync.Mutex
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stageMutex.Lock()
+		curStage := stage
+		stageMutex.Unlock()
+
+		w.WriteHeader(200)
+		switch curStage {
+		case 0:
+			_, _ = fmt.Fprintln(w, `[{"hash":"testhash","name":"Test Torrent","progress":0.10,"eta":60,"dlspeed":1024,"state":"downloading"}]`)
+		case 1:
+			// Small step (+5%), step threshold is 25%, so should not send
+			_, _ = fmt.Fprintln(w, `[{"hash":"testhash","name":"Test Torrent","progress":0.15,"eta":50,"dlspeed":1024,"state":"downloading"}]`)
+		case 2:
+			// Big step (+30%), should send
+			_, _ = fmt.Fprintln(w, `[{"hash":"testhash","name":"Test Torrent","progress":0.45,"eta":30,"dlspeed":1024,"state":"downloading"}]`)
+		case 3:
+			// Complete
+			_, _ = fmt.Fprintln(w, `[{"hash":"testhash","name":"Test Torrent","progress":1.0,"eta":0,"dlspeed":0,"state":"completed"}]`)
+		}
+	}))
+	defer ts.Close()
+
+	var updateCount int
+	var completeCount int
+	var countMutex sync.Mutex
+	ntfyTs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		countMutex.Lock()
+		if r.Header.Get("Title") == "Download Complete" {
+			completeCount++
+		} else {
+			updateCount++
+		}
+		countMutex.Unlock()
+		w.WriteHeader(200)
+	}))
+	defer ntfyTs.Close()
+
+	appCtx, appCancel := context.WithCancel(context.Background())
+	app := &App{
+		Config: &Config{
+			NtfyServer:       ntfyTs.URL,
+			NtfyTopic:        "test",
+			QbitHost:         ts.URL,
+			PollInt:          10 * time.Millisecond,
+			NotificationMode: "individual",
+			NotifyProgress:   true,
+			ProgressStep:     25,
+			MinUpdateInt:     0,
+			NotifyComplete:   true,
 		},
 		ActiveMonitors: map[string]bool{"testhash": true},
 		Ctx:            appCtx,
@@ -134,38 +294,37 @@ func TestTrackTorrent(t *testing.T) {
 	}
 	defer app.Cancel()
 
-	// Start tracking
 	app.Wg.Add(1)
 	go app.trackTorrent("testhash")
 
-	// Allow first mock response to process, then advance stage
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond) // Stage 0 sends initial (updateCount = 1)
 
 	stageMutex.Lock()
 	stage = 1
 	stageMutex.Unlock()
+	time.Sleep(30 * time.Millisecond) // Stage 1 skips step (< 25%)
 
-	// Wait for completion logic to kick in and exit the goroutine
-	done := make(chan struct{})
-	go func() {
-		app.Wg.Wait()
-		close(done)
-	}()
+	stageMutex.Lock()
+	stage = 2
+	stageMutex.Unlock()
+	time.Sleep(30 * time.Millisecond) // Stage 2 sends (+30% >= 25%, updateCount = 2)
 
-	select {
-	case <-done:
-		if !ntfyCalled {
-			t.Error("Expected Ntfy to be called on completion")
-		}
+	stageMutex.Lock()
+	stage = 3
+	stageMutex.Unlock()
+	time.Sleep(50 * time.Millisecond) // Stage 3 completes
 
-		app.Mutex.Lock()
-		active := app.ActiveMonitors["testhash"]
-		app.Mutex.Unlock()
-		if active {
-			t.Error("Expected monitor to be removed from activeMonitors map")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("trackTorrent failed to exit upon completion")
+	app.Cancel()
+	app.Wg.Wait()
+
+	countMutex.Lock()
+	defer countMutex.Unlock()
+
+	if updateCount != 2 {
+		t.Errorf("expected 2 progress updates, got %d", updateCount)
+	}
+	if completeCount != 1 {
+		t.Errorf("expected 1 completion notification, got %d", completeCount)
 	}
 }
 
@@ -179,7 +338,7 @@ func TestStartupScan_Errors(t *testing.T) {
 			name: "Auth Failure",
 			auth: true,
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(401) // mock auth fail string check
+				w.WriteHeader(401)
 				_, _ = fmt.Fprintln(w, "Fails.")
 			},
 		},
@@ -218,18 +377,16 @@ func TestStartupScan_Errors(t *testing.T) {
 				app.Config.QbitPass = "admin"
 			}
 
-			// We will cancel the context shortly after starting, which causes sleepOrExit to trigger the exit path naturally
 			go func() {
-				time.Sleep(50 * time.Millisecond) // Give it enough time to hit the error and enter sleepOrExit
+				time.Sleep(50 * time.Millisecond)
 				app.Cancel()
 			}()
 
 			app.Wg.Add(1)
-			app.startupScan() // this will block until appCancel fires inside sleepOrExit
+			app.startupScan()
 		})
 	}
 
-	// Test Connection Failed
 	t.Run("Connection Failed", func(t *testing.T) {
 		appCtx, appCancel := context.WithCancel(context.Background())
 		app := &App{
@@ -271,11 +428,10 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		}
 
 		app.Wg.Add(1)
-		app.trackTorrent("hash") // should return immediately after login fails
+		app.trackTorrent("hash")
 	})
 
 	t.Run("Torrent Removed", func(t *testing.T) {
-		// Mock API returns empty array (not found)
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 			_, _ = fmt.Fprintln(w, "[]")
@@ -295,11 +451,10 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		defer app.Cancel()
 
 		app.Wg.Add(1)
-		app.trackTorrent("hash") // should fetch once, get nil, log removed and return
+		app.trackTorrent("hash")
 	})
 
 	t.Run("API Error Loop Break", func(t *testing.T) {
-		// Mock API returning 500, simulating error in track loop
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(500)
 		}))
@@ -318,10 +473,10 @@ func TestTrackTorrent_Errors(t *testing.T) {
 
 		go func() {
 			time.Sleep(50 * time.Millisecond)
-			app.Cancel() // Break the loop
+			app.Cancel()
 		}()
 
 		app.Wg.Add(1)
-		app.trackTorrent("hash") // fetch fails, continues loop, then cancel triggers break
+		app.trackTorrent("hash")
 	})
 }

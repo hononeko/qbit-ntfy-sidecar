@@ -64,12 +64,18 @@ spec:
                   key: password
 
             # Optional Configuration
+            - name: NOTIFICATION_MODE
+              value: "grouped" # "grouped" (recommended for iOS/APNs), "individual", or "completion_only"
+            - name: GROUP_UPDATE_INTERVAL
+              value: "15" # seconds between grouped live updates
             - name: PROGRESS_FORMAT
               value: "bar" # or "percent"
             - name: NTFY_PRIORITY_PROGRESS
               value: "2"
-            - name: POLL_INTERVAL
-              value: "5" # seconds
+            - name: NOTIFY_COMPLETE
+              value: "true"
+            - name: NOTIFY_PROGRESS
+              value: "true"
 
           resources:
             requests:

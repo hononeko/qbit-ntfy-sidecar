@@ -101,11 +101,65 @@ func TestLoadConfig(t *testing.T) {
 		t.Errorf("expected 3 parsed subnets, got %d", len(cfg.AllowedSubnets))
 	}
 
-	// Check if the single IPs were expanded correctly
 	expectedMasks := []int{24, 32, 128} // /24, /32 (IPv4 single), /128 (IPv6 single)
 	for i, subnet := range cfg.AllowedSubnets {
 		if subnet.Bits() != expectedMasks[i] {
 			t.Errorf("subnet %d expected mask /%d, got /%d", i, expectedMasks[i], subnet.Bits())
 		}
+	}
+
+	// Test 3: New configuration options parsing and defaults
+	_ = os.Setenv("NOTIFICATION_MODE", "grouped")
+	_ = os.Setenv("GROUP_UPDATE_INTERVAL", "30")
+	_ = os.Setenv("PROGRESS_STEP", "10")
+	_ = os.Setenv("MIN_UPDATE_INTERVAL", "45")
+	_ = os.Setenv("NTFY_LIVE_ID", "custom-live-id")
+	_ = os.Setenv("NOTIFY_PROGRESS", "false")
+	defer func() {
+		_ = os.Unsetenv("NOTIFICATION_MODE")
+		_ = os.Unsetenv("GROUP_UPDATE_INTERVAL")
+		_ = os.Unsetenv("PROGRESS_STEP")
+		_ = os.Unsetenv("MIN_UPDATE_INTERVAL")
+		_ = os.Unsetenv("NTFY_LIVE_ID")
+		_ = os.Unsetenv("NOTIFY_PROGRESS")
+	}()
+
+	cfg = loadConfig()
+	if cfg.NotificationMode != "grouped" {
+		t.Errorf("expected NotificationMode 'grouped', got '%s'", cfg.NotificationMode)
+	}
+	if cfg.GroupUpdateInt != 30*time.Second {
+		t.Errorf("expected GroupUpdateInt 30s, got %v", cfg.GroupUpdateInt)
+	}
+	if cfg.ProgressStep != 10 {
+		t.Errorf("expected ProgressStep 10, got %d", cfg.ProgressStep)
+	}
+	if cfg.MinUpdateInt != 45*time.Second {
+		t.Errorf("expected MinUpdateInt 45s, got %v", cfg.MinUpdateInt)
+	}
+	if cfg.NtfyLiveID != "custom-live-id" {
+		t.Errorf("expected NtfyLiveID 'custom-live-id', got '%s'", cfg.NtfyLiveID)
+	}
+	if cfg.NotifyProgress != false {
+		t.Errorf("expected NotifyProgress false, got %v", cfg.NotifyProgress)
+	}
+
+	// Test 4: Invalid values fall back correctly
+	_ = os.Setenv("NOTIFICATION_MODE", "invalid_mode")
+	_ = os.Setenv("GROUP_UPDATE_INTERVAL", "-5")
+	_ = os.Setenv("PROGRESS_STEP", "150")
+	_ = os.Setenv("MIN_UPDATE_INTERVAL", "-10")
+	cfg = loadConfig()
+	if cfg.NotificationMode != "grouped" {
+		t.Errorf("expected fallback NotificationMode 'grouped', got '%s'", cfg.NotificationMode)
+	}
+	if cfg.GroupUpdateInt != 15*time.Second {
+		t.Errorf("expected fallback GroupUpdateInt 15s, got %v", cfg.GroupUpdateInt)
+	}
+	if cfg.ProgressStep != 25 {
+		t.Errorf("expected fallback ProgressStep 25, got %d", cfg.ProgressStep)
+	}
+	if cfg.MinUpdateInt != 60*time.Second {
+		t.Errorf("expected fallback MinUpdateInt 60s, got %v", cfg.MinUpdateInt)
 	}
 }

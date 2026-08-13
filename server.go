@@ -22,16 +22,26 @@ func (a *App) handleTrackRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.Mutex.Lock()
+	if a.ActiveMonitors == nil {
+		a.ActiveMonitors = make(map[string]bool)
+	}
 	if a.ActiveMonitors[hash] {
 		a.Mutex.Unlock()
 		_, _ = fmt.Fprintf(w, "Already tracking %q", hash) // %q escapes newlines to prevent response manipulation
 		return
 	}
 	a.ActiveMonitors[hash] = true
+	if a.Completed != nil {
+		delete(a.Completed, hash)
+	}
 	a.Mutex.Unlock()
 
-	a.Wg.Add(1)
-	go a.trackTorrent(hash)
+	if a.Config.NotificationMode == "grouped" {
+		a.wakeCoordinator()
+	} else {
+		a.Wg.Add(1)
+		go a.trackTorrent(hash)
+	}
 
 	w.WriteHeader(200)
 	_, _ = fmt.Fprintf(w, "Tracking started for %q", hash) // %q escapes input

@@ -11,19 +11,25 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	QbitHost       string
-	QbitUser       string
-	QbitPass       string
-	NtfyServer     string
-	NtfyUser       string
-	NtfyPass       string
-	NtfyTopic      string
-	NtfyPrioProg   string
-	NtfyPrioComp   string
-	NotifyComplete bool
-	ProgressFormat string
-	PollInt        time.Duration
-	AllowedSubnets []netip.Prefix
+	QbitHost         string
+	QbitUser         string
+	QbitPass         string
+	NtfyServer       string
+	NtfyUser         string
+	NtfyPass         string
+	NtfyTopic        string
+	NtfyPrioProg     string
+	NtfyPrioComp     string
+	NotifyComplete   bool
+	NotifyProgress   bool
+	NotificationMode string // "grouped", "individual", "completion_only"
+	GroupUpdateInt   time.Duration
+	ProgressStep     int
+	MinUpdateInt     time.Duration
+	NtfyLiveID       string
+	ProgressFormat   string
+	PollInt          time.Duration
+	AllowedSubnets   []netip.Prefix
 }
 
 func loadConfig() *Config {
@@ -40,6 +46,37 @@ func loadConfig() *Config {
 	cfg.NtfyPrioComp = getEnv("NTFY_PRIORITY_COMPLETE", "3") // Default: Default (sound/vibe)
 
 	cfg.NotifyComplete = getEnvBool("NOTIFY_COMPLETE", true)
+	cfg.NotifyProgress = getEnvBool("NOTIFY_PROGRESS", true)
+
+	mode := strings.ToLower(getEnv("NOTIFICATION_MODE", "grouped"))
+	if mode != "grouped" && mode != "individual" && mode != "completion_only" {
+		log.Printf("Warning: Invalid NOTIFICATION_MODE %q. Defaulting to 'grouped'.", mode)
+		mode = "grouped"
+	}
+	cfg.NotificationMode = mode
+
+	groupIntVal := getEnvInt("GROUP_UPDATE_INTERVAL", 15)
+	if groupIntVal <= 0 {
+		log.Printf("Warning: Invalid GROUP_UPDATE_INTERVAL %d. Using default 15s.", groupIntVal)
+		groupIntVal = 15
+	}
+	cfg.GroupUpdateInt = time.Duration(groupIntVal) * time.Second
+
+	stepVal := getEnvInt("PROGRESS_STEP", 25)
+	if stepVal < 1 || stepVal > 100 {
+		log.Printf("Warning: Invalid PROGRESS_STEP %d. Using default 25%%.", stepVal)
+		stepVal = 25
+	}
+	cfg.ProgressStep = stepVal
+
+	minIntVal := getEnvInt("MIN_UPDATE_INTERVAL", 60)
+	if minIntVal < 0 {
+		log.Printf("Warning: Invalid MIN_UPDATE_INTERVAL %d. Using default 60s.", minIntVal)
+		minIntVal = 60
+	}
+	cfg.MinUpdateInt = time.Duration(minIntVal) * time.Second
+
+	cfg.NtfyLiveID = getEnv("NTFY_LIVE_ID", "qbit-live-downloads")
 	cfg.ProgressFormat = getEnv("PROGRESS_FORMAT", "bar") // "bar" or "percent"
 	pollIntVal := getEnvInt("POLL_INTERVAL", 5)
 	if pollIntVal <= 0 {

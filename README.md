@@ -165,21 +165,27 @@ The sidecar is event-driven. It needs to know _when_ to start monitoring a new t
 
 ## Environment Variables
 
-| Variable                 | Description                     | Default                 |
-| ------------------------ | ------------------------------- | ----------------------- |
-| `ALLOWED_SUBNETS`        | Subnets allowed to hit `/track` | `""` (Deny All)         |
-| `QBIT_HOST`              | qBittorrent API URL             | `http://localhost:8080` |
-| `QBIT_USER`              | Web UI Username (Optional)      | `""`                    |
-| `QBIT_PASS`              | Web UI Password (Optional)      | `""`                    |
-| `NTFY_TOPIC`             | Ntfy Topic Name (**REQUIRED**)  | `null`                  |
-| `NTFY_SERVER`            | Ntfy Server URL                 | `https://ntfy.sh`       |
-| `NTFY_USER`              | Ntfy Username (Optional)        | `""`                    |
-| `NTFY_PASS`              | Ntfy Password (Optional)        | `""`                    |
-| `NTFY_PRIORITY_PROGRESS` | Priority for progress updates   | `2` (Low)               |
-| `NTFY_PRIORITY_COMPLETE` | Priority for completion alerts  | `3` (Default)           |
-| `NOTIFY_COMPLETE`        | Send notification on completion | `true`                  |
-| `PROGRESS_FORMAT`        | Format: `bar` or `percent`      | `bar`                   |
-| `POLL_INTERVAL`          | Polling interval in seconds     | `5`                     |
+| Variable                 | Description                                                         | Default                 |
+| ------------------------ | ------------------------------------------------------------------- | ----------------------- |
+| `ALLOWED_SUBNETS`        | Subnets allowed to hit `/track`                                     | `""` (Deny All)         |
+| `QBIT_HOST`              | qBittorrent API URL                                                 | `http://localhost:8080` |
+| `QBIT_USER`              | Web UI Username (Optional)                                          | `""`                    |
+| `QBIT_PASS`              | Web UI Password (Optional)                                          | `""`                    |
+| `NTFY_TOPIC`             | Ntfy Topic Name (**REQUIRED**)                                      | `null`                  |
+| `NTFY_SERVER`            | Ntfy Server URL                                                     | `https://ntfy.sh`       |
+| `NTFY_USER`              | Ntfy Username (Optional)                                            | `""`                    |
+| `NTFY_PASS`              | Ntfy Password (Optional)                                            | `""`                    |
+| `NOTIFICATION_MODE`      | `grouped` (live card, recommended for iOS), `individual`, `completion_only` | `grouped`       |
+| `GROUP_UPDATE_INTERVAL`  | Interval in seconds between live grouped updates                    | `15`                    |
+| `PROGRESS_STEP`          | Minimum % progress jump before sending individual update (1-100)    | `25`                    |
+| `MIN_UPDATE_INTERVAL`    | Minimum cooldown in seconds between individual updates              | `60`                    |
+| `NTFY_LIVE_ID`           | Ntfy Message ID for grouped live notification card                  | `qbit-live-downloads`   |
+| `NOTIFY_PROGRESS`        | Send in-progress download updates                                   | `true`                  |
+| `NOTIFY_COMPLETE`        | Send notification on completion                                     | `true`                  |
+| `NTFY_PRIORITY_PROGRESS` | Priority for progress updates                                       | `2` (Low)               |
+| `NTFY_PRIORITY_COMPLETE` | Priority for completion alerts                                      | `3` (Default)           |
+| `PROGRESS_FORMAT`        | Format: `bar` or `percent`                                          | `bar`                   |
+| `POLL_INTERVAL`          | Polling interval for individual mode (seconds)                      | `5`                     |
 
 ## Building Locally
 
