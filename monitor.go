@@ -424,10 +424,7 @@ func (a *App) trackTorrent(hash string) {
 
 		// Check Completion
 		if pct >= 100 || strings.Contains(t.State, "up") || t.State == "completed" {
-			log.Printf("[%q] Torrent finished (%q). Stopping monitor.", hash, t.Name)
-			if a.Config.NotifyComplete {
-				sendComplete(a.Config, t)
-			}
+			a.handleTorrentCompleted(t)
 			return
 		}
 

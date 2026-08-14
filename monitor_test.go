@@ -669,3 +669,82 @@ func TestHealthAlerts(t *testing.T) {
 	}
 	alertMutex.Unlock()
 }
+
+func TestAutoDiscovery_Individual(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = fmt.Fprintln(w, `[{"hash":"indiv1","name":"Individual Torrent","progress":0.5,"state":"downloading"}]`)
+	}))
+	defer ts.Close()
+
+	appCtx, appCancel := context.WithCancel(context.Background())
+	app := &App{
+		Config: &Config{
+			QbitHost:         ts.URL,
+			AutoDiscoveryInt: 20 * time.Millisecond,
+			NotificationMode: "individual",
+			PollInt:          10 * time.Millisecond,
+		},
+		ActiveMonitors: make(map[string]bool),
+		Completed:      make(map[string]bool),
+		Ctx:            appCtx,
+		Cancel:         appCancel,
+	}
+
+	app.Wg.Add(1)
+	go app.runAutoDiscovery()
+
+	time.Sleep(60 * time.Millisecond)
+
+	app.Mutex.Lock()
+	found := app.ActiveMonitors["indiv1"]
+	app.Mutex.Unlock()
+
+	app.Cancel()
+	app.Wg.Wait()
+
+	if !found {
+		t.Error("Expected auto-discovery to track 'indiv1' in individual mode")
+	}
+}
+
+func TestHealthAlerts_ResetBeforeThreshold(t *testing.T) {
+	var alertTitles []string
+	var alertMutex sync.Mutex
+	ntfyTs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		alertMutex.Lock()
+		alertTitles = append(alertTitles, r.Header.Get("Title"))
+		alertMutex.Unlock()
+		w.WriteHeader(200)
+	}))
+	defer ntfyTs.Close()
+
+	cfg := &Config{
+		NtfyServer:         ntfyTs.URL,
+		NtfyTopic:          "test_health",
+		NotifyHealthErrors: true,
+	}
+
+	h := &healthState{}
+
+	// 4 errors (not reaching 5)
+	for i := 0; i < 4; i++ {
+		h.recordError(cfg, "error")
+	}
+
+	// 1 success resets consecutive errors
+	h.recordSuccess(cfg)
+
+	// Another 4 errors (should not trigger because consecutiveErrors was reset)
+	for i := 0; i < 4; i++ {
+		h.recordError(cfg, "error")
+	}
+
+	alertMutex.Lock()
+	count := len(alertTitles)
+	alertMutex.Unlock()
+
+	if count != 0 {
+		t.Errorf("expected 0 alerts when counter is reset before reaching threshold, got %d", count)
+	}
+}
