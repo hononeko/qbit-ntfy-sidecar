@@ -31,6 +31,8 @@ type Config struct {
 	NtfyLiveID         string
 	ProgressFormat     string
 	PollInt            time.Duration
+	AutoDiscoveryInt   time.Duration
+	NotifyHealthErrors bool
 	AllowedSubnets     []netip.Prefix
 }
 
@@ -50,6 +52,7 @@ func loadConfig() *Config {
 
 	cfg.NotifyComplete = getEnvBool("NOTIFY_COMPLETE", true)
 	cfg.NotifyProgress = getEnvBool("NOTIFY_PROGRESS", true)
+	cfg.NotifyHealthErrors = getEnvBool("NOTIFY_HEALTH_ERRORS", false)
 
 	mode := strings.ToLower(getEnv("NOTIFICATION_MODE", "grouped"))
 	if mode != "grouped" && mode != "individual" && mode != "completion_only" {
@@ -93,6 +96,13 @@ func loadConfig() *Config {
 		log.Fatalf("Invalid POLL_INTERVAL: %d. Must be > 0", pollIntVal)
 	}
 	cfg.PollInt = time.Duration(pollIntVal) * time.Second
+
+	autoDiscVal := getEnvInt("AUTO_DISCOVERY_INTERVAL", 300)
+	if autoDiscVal < 0 {
+		log.Printf("Warning: Invalid AUTO_DISCOVERY_INTERVAL %d. Using default 300s.", autoDiscVal)
+		autoDiscVal = 300
+	}
+	cfg.AutoDiscoveryInt = time.Duration(autoDiscVal) * time.Second
 
 	// Parse ALLOWED_SUBNETS
 	subnetEnv := getEnv("ALLOWED_SUBNETS", "")

@@ -58,6 +58,12 @@ func main() {
 	app.Wg.Add(1)
 	go app.startupScan()
 
+	// 4. Run Periodic Auto-Discovery (Background)
+	if app.Config.AutoDiscoveryInt > 0 {
+		app.Wg.Add(1)
+		go app.runAutoDiscovery()
+	}
+
 	server := &http.Server{
 		Addr:         ":" + port,
 		Handler:      nil, // DefaultServeMux

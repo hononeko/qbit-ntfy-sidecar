@@ -321,3 +321,30 @@ func TestSendNtfy_ActionsAndClick(t *testing.T) {
 		t.Errorf("expected Actions header to contain Open WebUI, got %q", receivedActions)
 	}
 }
+
+func TestSendHealthAlert(t *testing.T) {
+	var receivedTitle, receivedID, receivedPriority string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedTitle = r.Header.Get("Title")
+		receivedID = r.Header.Get("X-Message-ID")
+		receivedPriority = r.Header.Get("Priority")
+		w.WriteHeader(200)
+	}))
+	t.Cleanup(ts.Close)
+
+	cfg := &Config{
+		NtfyServer: ts.URL,
+		NtfyTopic:  "test_topic",
+	}
+
+	sendHealthAlert(cfg, "Test Health", "Message", "warning", "4")
+	if receivedTitle != "Test Health" {
+		t.Errorf("expected Title 'Test Health', got %q", receivedTitle)
+	}
+	if receivedID != "qbit-health-alert" {
+		t.Errorf("expected ID 'qbit-health-alert', got %q", receivedID)
+	}
+	if receivedPriority != "4" {
+		t.Errorf("expected Priority '4', got %q", receivedPriority)
+	}
+}

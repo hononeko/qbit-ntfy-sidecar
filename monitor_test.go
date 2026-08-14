@@ -577,3 +577,174 @@ func TestTrackTorrent_Errors(t *testing.T) {
 		app.trackTorrent("hash")
 	})
 }
+
+func TestAutoDiscovery(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = fmt.Fprintln(w, `[{"hash":"auto1","name":"Auto Torrent","progress":0.3,"state":"downloading"}]`)
+	}))
+	defer ts.Close()
+
+	appCtx, appCancel := context.WithCancel(context.Background())
+	app := &App{
+		Config: &Config{
+			QbitHost:         ts.URL,
+			AutoDiscoveryInt: 20 * time.Millisecond,
+			NotificationMode: "grouped",
+		},
+		ActiveMonitors: make(map[string]bool),
+		Completed:      make(map[string]bool),
+		WakeCh:         make(chan struct{}, 1),
+		Ctx:            appCtx,
+		Cancel:         appCancel,
+	}
+
+	app.Wg.Add(1)
+	go app.runAutoDiscovery()
+
+	time.Sleep(60 * time.Millisecond)
+
+	app.Mutex.Lock()
+	found := app.ActiveMonitors["auto1"]
+	app.Mutex.Unlock()
+
+	app.Cancel()
+	app.Wg.Wait()
+
+	if !found {
+		t.Error("Expected auto-discovery to track 'auto1'")
+	}
+}
+
+func TestHealthAlerts(t *testing.T) {
+	var alertTitles []string
+	var alertMutex sync.Mutex
+	ntfyTs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		alertMutex.Lock()
+		alertTitles = append(alertTitles, r.Header.Get("Title"))
+		alertMutex.Unlock()
+		w.WriteHeader(200)
+	}))
+	defer ntfyTs.Close()
+
+	cfg := &Config{
+		NtfyServer:         ntfyTs.URL,
+		NtfyTopic:          "test_health",
+		NotifyHealthErrors: true,
+	}
+
+	h := &healthState{}
+
+	// 4 errors: no alert sent
+	for i := 0; i < 4; i++ {
+		h.recordError(cfg, "connection timeout")
+	}
+	alertMutex.Lock()
+	if len(alertTitles) != 0 {
+		t.Errorf("expected 0 alerts after 4 errors, got %d", len(alertTitles))
+	}
+	alertMutex.Unlock()
+
+	// 5th error: should trigger warning alert
+	h.recordError(cfg, "connection timeout")
+	alertMutex.Lock()
+	if len(alertTitles) != 1 || alertTitles[0] != "qBittorrent Unreachable" {
+		t.Errorf("expected unreachable alert on 5th error, got %v", alertTitles)
+	}
+	alertMutex.Unlock()
+
+	// 6th error: no duplicate alert
+	h.recordError(cfg, "connection timeout")
+	alertMutex.Lock()
+	if len(alertTitles) != 1 {
+		t.Errorf("expected no duplicate unreachable alert, got %d", len(alertTitles))
+	}
+	alertMutex.Unlock()
+
+	// Recovery: should trigger reconnected alert
+	h.recordSuccess(cfg)
+	alertMutex.Lock()
+	if len(alertTitles) != 2 || alertTitles[1] != "qBittorrent Reconnected" {
+		t.Errorf("expected reconnected alert on success, got %v", alertTitles)
+	}
+	alertMutex.Unlock()
+}
+
+func TestAutoDiscovery_Individual(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = fmt.Fprintln(w, `[{"hash":"indiv1","name":"Individual Torrent","progress":0.5,"state":"downloading"}]`)
+	}))
+	defer ts.Close()
+
+	appCtx, appCancel := context.WithCancel(context.Background())
+	app := &App{
+		Config: &Config{
+			QbitHost:         ts.URL,
+			AutoDiscoveryInt: 20 * time.Millisecond,
+			NotificationMode: "individual",
+			PollInt:          10 * time.Millisecond,
+		},
+		ActiveMonitors: make(map[string]bool),
+		Completed:      make(map[string]bool),
+		Ctx:            appCtx,
+		Cancel:         appCancel,
+	}
+
+	app.Wg.Add(1)
+	go app.runAutoDiscovery()
+
+	time.Sleep(60 * time.Millisecond)
+
+	app.Mutex.Lock()
+	found := app.ActiveMonitors["indiv1"]
+	app.Mutex.Unlock()
+
+	app.Cancel()
+	app.Wg.Wait()
+
+	if !found {
+		t.Error("Expected auto-discovery to track 'indiv1' in individual mode")
+	}
+}
+
+func TestHealthAlerts_ResetBeforeThreshold(t *testing.T) {
+	var alertTitles []string
+	var alertMutex sync.Mutex
+	ntfyTs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		alertMutex.Lock()
+		alertTitles = append(alertTitles, r.Header.Get("Title"))
+		alertMutex.Unlock()
+		w.WriteHeader(200)
+	}))
+	defer ntfyTs.Close()
+
+	cfg := &Config{
+		NtfyServer:         ntfyTs.URL,
+		NtfyTopic:          "test_health",
+		NotifyHealthErrors: true,
+	}
+
+	h := &healthState{}
+
+	// 4 errors (not reaching 5)
+	for i := 0; i < 4; i++ {
+		h.recordError(cfg, "error")
+	}
+
+	// 1 success resets consecutive errors
+	h.recordSuccess(cfg)
+
+	// Another 4 errors (should not trigger because consecutiveErrors was reset)
+	for i := 0; i < 4; i++ {
+		h.recordError(cfg, "error")
+	}
+
+	alertMutex.Lock()
+	count := len(alertTitles)
+	alertMutex.Unlock()
+
+	if count != 0 {
+		t.Errorf("expected 0 alerts when counter is reset before reaching threshold, got %d", count)
+	}
+}
