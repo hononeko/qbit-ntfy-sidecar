@@ -51,12 +51,12 @@ func TestIsValidHash(t *testing.T) {
 		hash  string
 		valid bool
 	}{
-		{"1234567890abcdef1234567890abcdef12345678", true},                                 // 40 char v1
-		{"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", true},         // 64 char v2
-		{"1234567890ABCDEF1234567890ABCDEF12345678", true},                                 // uppercase
-		{"12345", false},                                                                     // too short
-		{"1234567890abcdef1234567890abcdef1234567g", false},                                 // invalid char 'g'
-		{"1234567890abcdef1234567890abcdef12345678;", false},                                // injection
+		{"1234567890abcdef1234567890abcdef12345678", true},                         // 40 char v1
+		{"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", true}, // 64 char v2
+		{"1234567890ABCDEF1234567890ABCDEF12345678", true},                         // uppercase
+		{"12345", false}, // too short
+		{"1234567890abcdef1234567890abcdef1234567g", false},  // invalid char 'g'
+		{"1234567890abcdef1234567890abcdef12345678;", false}, // injection
 		{"", false},
 	}
 

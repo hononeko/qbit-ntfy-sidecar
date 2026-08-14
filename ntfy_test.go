@@ -240,3 +240,84 @@ func TestSendGroupedUpdateAndComplete(t *testing.T) {
 		t.Errorf("expected ID 'live-id-123', got %s", receivedID)
 	}
 }
+
+func TestFormatGroupedUpdate_TopNOverflow(t *testing.T) {
+	cfg := &Config{
+		ProgressFormat:     "bar",
+		MaxDisplayTorrents: 2,
+	}
+
+	torrents := []Torrent{
+		{Hash: "1", Name: "Torrent 1", Progress: 0.2, DlSpeed: 1048576, Eta: 60},
+		{Hash: "2", Name: "Torrent 2", Progress: 0.5, DlSpeed: 2097152, Eta: 30},
+		{Hash: "3", Name: "Torrent 3", Progress: 0.8, DlSpeed: 3145728, Eta: 10},
+		{Hash: "4", Name: "Torrent 4", Progress: 0.9, DlSpeed: 4194304, Eta: 5},
+	}
+
+	title, msg := formatGroupedUpdate(cfg, torrents)
+	if !strings.Contains(title, "Downloading (4 items) • 10.0 MB/s") {
+		t.Errorf("unexpected title: %q", title)
+	}
+	if !strings.Contains(msg, "Torrent 1") || !strings.Contains(msg, "Torrent 2") {
+		t.Errorf("missing top-2 torrents in msg: %q", msg)
+	}
+	if strings.Contains(msg, "Torrent 3") || strings.Contains(msg, "Torrent 4") {
+		t.Errorf("overflow torrents should not appear in body list: %q", msg)
+	}
+	if !strings.Contains(msg, "... and 2 more active (Total: 10.0 MB/s)") {
+		t.Errorf("missing or incorrect overflow footer: %q", msg)
+	}
+
+	// Exact boundary test (len == MaxDisplayTorrents)
+	exactTorrents := torrents[:2]
+	_, msgExact := formatGroupedUpdate(cfg, exactTorrents)
+	if strings.Contains(msgExact, "... and") {
+		t.Errorf("exact match should not contain overflow footer: %q", msgExact)
+	}
+}
+
+func TestFormatTorrentStatusBadge(t *testing.T) {
+	paused := &Torrent{State: "pausedDL"}
+	if badge := formatTorrentStatusBadge(paused); badge != " [⏸ Paused]" {
+		t.Errorf("expected paused badge, got %q", badge)
+	}
+
+	stalled := &Torrent{State: "stalledDL", DlSpeed: 0, Progress: 0.5}
+	if badge := formatTorrentStatusBadge(stalled); badge != " [⏳ Stalled]" {
+		t.Errorf("expected stalled badge, got %q", badge)
+	}
+
+	stalledHeuristic := &Torrent{State: "downloading", DlSpeed: 0, Progress: 0.5}
+	if badge := formatTorrentStatusBadge(stalledHeuristic); badge != " [⏳ Stalled]" {
+		t.Errorf("expected stalled heuristic badge, got %q", badge)
+	}
+
+	normal := &Torrent{State: "downloading", DlSpeed: 1024, Progress: 0.5}
+	if badge := formatTorrentStatusBadge(normal); badge != "" {
+		t.Errorf("expected empty badge for active download, got %q", badge)
+	}
+}
+
+func TestSendNtfy_ActionsAndClick(t *testing.T) {
+	var receivedClick, receivedActions string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedClick = r.Header.Get("Click")
+		receivedActions = r.Header.Get("Actions")
+		w.WriteHeader(200)
+	}))
+	t.Cleanup(ts.Close)
+
+	cfg := &Config{
+		NtfyServer:    ts.URL,
+		NtfyTopic:     "test_topic",
+		QbitPublicURL: "https://qbit.lan:8080",
+	}
+
+	sendNtfy(cfg, "Test Title", "Test Message", "arrow_down", "id", "2")
+	if receivedClick != "https://qbit.lan:8080" {
+		t.Errorf("expected Click 'https://qbit.lan:8080', got %q", receivedClick)
+	}
+	if !strings.Contains(receivedActions, "view, Open WebUI, https://qbit.lan:8080") {
+		t.Errorf("expected Actions header to contain Open WebUI, got %q", receivedActions)
+	}
+}

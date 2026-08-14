@@ -64,10 +64,14 @@ spec:
                   key: password
 
             # Optional Configuration
+            - name: QBIT_PUBLIC_URL
+              value: "https://qbit.example.com" # Adds 1-click 'Open WebUI' action buttons to notifications
             - name: NOTIFICATION_MODE
               value: "grouped" # "grouped" (recommended for iOS/APNs), "individual", or "completion_only"
             - name: GROUP_UPDATE_INTERVAL
               value: "15" # seconds between grouped live updates
+            - name: MAX_DISPLAY_TORRENTS
+              value: "5" # maximum torrents listed in grouped summary
             - name: PROGRESS_FORMAT
               value: "bar" # or "percent"
             - name: NTFY_PRIORITY_PROGRESS
