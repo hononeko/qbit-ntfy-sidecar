@@ -11,8 +11,8 @@ A lightweight Go sidecar for Kubernetes to monitor qBittorrent downloads and sen
 - **Live Grouped Notifications**: Aggregates all active downloads into a single, updating live notification card (iOS/APNs friendly to avoid push rate limits).
 - **1-Click WebUI Action Buttons**: Adds interactive "Open WebUI" buttons and direct tap URLs to notifications (`QBIT_PUBLIC_URL`).
 - **Top-N Overflow & Status Badges**: Cleanly caps large download queues (`MAX_DISPLAY_TORRENTS`) and displays `[⏳ Stalled]` / `[⏸ Paused]` indicators.
-- **Event-Driven**: Only runs when triggered by qBittorrent (zero idle CPU usage).
-- **Startup Sync**: Automatically resumes monitoring active downloads on container restart.
+- **Event-Driven & Auto-Discovery**: Triggered instantly by qBittorrent, with optional periodic polling (`AUTO_DISCOVERY_INTERVAL`) to catch untracked downloads.
+- **Startup Sync & Connection Health**: Resumes active monitors on restart and optional connectivity alerts (`NOTIFY_HEALTH_ERRORS`).
 - **Smart Rate-Limiting**: Configurable progress step thresholds and minimum update intervals.
 - **Real-time Progress**: Sends updates with ASCII progress bars or percentages.
 - **Completion Alerts**: Configurable priority notification when a download finishes.
@@ -215,6 +215,8 @@ The sidecar is event-driven. It needs to know _when_ to start monitoring a new t
 | `NTFY_PRIORITY_COMPLETE` | Priority for completion alerts                                      | `3` (Default)           |
 | `PROGRESS_FORMAT`        | Format: `bar` or `percent`                                          | `bar`                   |
 | `POLL_INTERVAL`          | Polling interval for individual mode (seconds)                      | `5`                     |
+| `AUTO_DISCOVERY_INTERVAL`| Background polling interval for untracked downloads (seconds, 0=off)| `300` (5 min)           |
+| `NOTIFY_HEALTH_ERRORS`   | Send alerts if qBittorrent becomes unreachable / reconnects         | `false`                 |
 
 ## Building Locally
 

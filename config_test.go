@@ -117,6 +117,8 @@ func TestLoadConfig(t *testing.T) {
 	_ = os.Setenv("NOTIFY_PROGRESS", "false")
 	_ = os.Setenv("QBIT_PUBLIC_URL", "https://qbit.example.com/")
 	_ = os.Setenv("MAX_DISPLAY_TORRENTS", "8")
+	_ = os.Setenv("AUTO_DISCOVERY_INTERVAL", "120")
+	_ = os.Setenv("NOTIFY_HEALTH_ERRORS", "true")
 	defer func() {
 		_ = os.Unsetenv("NOTIFICATION_MODE")
 		_ = os.Unsetenv("GROUP_UPDATE_INTERVAL")
@@ -126,6 +128,8 @@ func TestLoadConfig(t *testing.T) {
 		_ = os.Unsetenv("NOTIFY_PROGRESS")
 		_ = os.Unsetenv("QBIT_PUBLIC_URL")
 		_ = os.Unsetenv("MAX_DISPLAY_TORRENTS")
+		_ = os.Unsetenv("AUTO_DISCOVERY_INTERVAL")
+		_ = os.Unsetenv("NOTIFY_HEALTH_ERRORS")
 	}()
 
 	cfg = loadConfig()
@@ -153,6 +157,12 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.MaxDisplayTorrents != 8 {
 		t.Errorf("expected MaxDisplayTorrents 8, got %d", cfg.MaxDisplayTorrents)
 	}
+	if cfg.AutoDiscoveryInt != 120*time.Second {
+		t.Errorf("expected AutoDiscoveryInt 120s, got %v", cfg.AutoDiscoveryInt)
+	}
+	if cfg.NotifyHealthErrors != true {
+		t.Errorf("expected NotifyHealthErrors true, got %v", cfg.NotifyHealthErrors)
+	}
 
 	// Test 4: Invalid values fall back correctly
 	_ = os.Setenv("NOTIFICATION_MODE", "invalid_mode")
@@ -160,6 +170,7 @@ func TestLoadConfig(t *testing.T) {
 	_ = os.Setenv("PROGRESS_STEP", "150")
 	_ = os.Setenv("MIN_UPDATE_INTERVAL", "-10")
 	_ = os.Setenv("MAX_DISPLAY_TORRENTS", "-3")
+	_ = os.Setenv("AUTO_DISCOVERY_INTERVAL", "-1")
 	cfg = loadConfig()
 	if cfg.NotificationMode != "grouped" {
 		t.Errorf("expected fallback NotificationMode 'grouped', got '%s'", cfg.NotificationMode)
@@ -175,5 +186,8 @@ func TestLoadConfig(t *testing.T) {
 	}
 	if cfg.MaxDisplayTorrents != 5 {
 		t.Errorf("expected fallback MaxDisplayTorrents 5, got %d", cfg.MaxDisplayTorrents)
+	}
+	if cfg.AutoDiscoveryInt != 300*time.Second {
+		t.Errorf("expected fallback AutoDiscoveryInt 300s, got %v", cfg.AutoDiscoveryInt)
 	}
 }

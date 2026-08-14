@@ -80,6 +80,10 @@ spec:
               value: "true"
             - name: NOTIFY_PROGRESS
               value: "true"
+            - name: AUTO_DISCOVERY_INTERVAL
+              value: "300" # background discovery interval in seconds (5m, 0 to disable)
+            - name: NOTIFY_HEALTH_ERRORS
+              value: "false" # alert if qBittorrent becomes unreachable
 
           resources:
             requests:

@@ -2,12 +2,40 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
 	"time"
 )
+
+type healthState struct {
+	consecutiveErrors int
+	alertSent         bool
+}
+
+func (h *healthState) recordSuccess(cfg *Config) {
+	if h.alertSent {
+		log.Println("Health: qBittorrent connection recovered.")
+		if cfg.NotifyHealthErrors {
+			sendHealthAlert(cfg, "qBittorrent Reconnected", "Connection to qBittorrent API has been restored.", "white_check_mark", "3")
+		}
+		h.alertSent = false
+	}
+	h.consecutiveErrors = 0
+}
+
+func (h *healthState) recordError(cfg *Config, errDesc string) {
+	h.consecutiveErrors++
+	if h.consecutiveErrors >= 5 && !h.alertSent {
+		log.Printf("Health: qBittorrent unreachable for 5 consecutive attempts (%s)", errDesc)
+		if cfg.NotifyHealthErrors {
+			sendHealthAlert(cfg, "qBittorrent Unreachable", "Unable to reach qBittorrent API after 5 attempts: "+errDesc, "warning", "4")
+		}
+		h.alertSent = true
+	}
+}
 
 func (a *App) startupScan() {
 	defer a.Wg.Done()
@@ -109,6 +137,81 @@ func (a *App) startupScan() {
 	}
 }
 
+func (a *App) runAutoDiscovery() {
+	defer a.Wg.Done()
+
+	if a.Config.AutoDiscoveryInt <= 0 {
+		return
+	}
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar, Timeout: 10 * time.Second}
+
+	if a.Config.QbitUser != "" && a.Config.QbitPass != "" {
+		_ = login(client, a.Config)
+	}
+
+	ticker := time.NewTicker(a.Config.AutoDiscoveryInt)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-a.Ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		resp, err := client.Get(a.Config.QbitHost + "/api/v2/torrents/info?filter=downloading")
+		if err != nil {
+			log.Printf("Auto-Discovery: Connection failed: %v", err)
+			continue
+		}
+		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+			_ = resp.Body.Close()
+			if a.Config.QbitUser != "" && a.Config.QbitPass != "" {
+				_ = login(client, a.Config)
+			}
+			continue
+		}
+		if resp.StatusCode != 200 {
+			_ = resp.Body.Close()
+			continue
+		}
+
+		var downloading []Torrent
+		if err := json.NewDecoder(resp.Body).Decode(&downloading); err != nil {
+			_ = resp.Body.Close()
+			continue
+		}
+		_ = resp.Body.Close()
+
+		a.Mutex.Lock()
+		if a.ActiveMonitors == nil {
+			a.ActiveMonitors = make(map[string]bool)
+		}
+		var newlyDiscovered []string
+		for _, t := range downloading {
+			if !a.ActiveMonitors[t.Hash] && (a.Completed == nil || !a.Completed[t.Hash]) {
+				a.ActiveMonitors[t.Hash] = true
+				newlyDiscovered = append(newlyDiscovered, t.Hash)
+				log.Printf("Auto-Discovery: Discovered untracked torrent %q (%q)", t.Name, t.Hash)
+			}
+		}
+		a.Mutex.Unlock()
+
+		if len(newlyDiscovered) > 0 {
+			if a.Config.NotificationMode == "grouped" {
+				a.wakeCoordinator()
+			} else {
+				for _, hash := range newlyDiscovered {
+					a.Wg.Add(1)
+					go a.trackTorrent(hash)
+				}
+			}
+		}
+	}
+}
+
 func (a *App) handleTorrentCompleted(t *Torrent) {
 	a.Mutex.Lock()
 	delete(a.ActiveMonitors, t.Hash)
@@ -145,6 +248,7 @@ func (a *App) runGroupedCoordinator() {
 	defer ticker.Stop()
 
 	liveActive := false
+	health := &healthState{}
 
 	for {
 		select {
@@ -170,6 +274,7 @@ func (a *App) runGroupedCoordinator() {
 		resp, err := client.Get(a.Config.QbitHost + "/api/v2/torrents/info?filter=downloading")
 		if err != nil {
 			log.Printf("Coordinator: Connection error: %v", err)
+			health.recordError(a.Config, err.Error())
 			continue
 		}
 		if resp.StatusCode == 401 || resp.StatusCode == 403 {
@@ -177,13 +282,17 @@ func (a *App) runGroupedCoordinator() {
 			if a.Config.QbitUser != "" && a.Config.QbitPass != "" {
 				_ = login(client, a.Config)
 			}
+			health.recordError(a.Config, fmt.Sprintf("HTTP %d", resp.StatusCode))
 			continue
 		}
 		if resp.StatusCode != 200 {
 			_ = resp.Body.Close()
 			log.Printf("Coordinator: API returned %d", resp.StatusCode)
+			health.recordError(a.Config, fmt.Sprintf("HTTP %d", resp.StatusCode))
 			continue
 		}
+
+		health.recordSuccess(a.Config)
 
 		var downloading []Torrent
 		if err := json.NewDecoder(resp.Body).Decode(&downloading); err != nil {
@@ -285,6 +394,7 @@ func (a *App) trackTorrent(hash string) {
 
 	lastPct := -1
 	var lastSentTime time.Time
+	health := &healthState{}
 
 	for {
 		select {
@@ -297,6 +407,7 @@ func (a *App) trackTorrent(hash string) {
 		t, err := getTorrentInfo(client, a.Config, hash)
 		if err != nil {
 			log.Printf("[%q] Error: %v", hash, err)
+			health.recordError(a.Config, err.Error())
 			if a.Config.QbitUser != "" && a.Config.QbitPass != "" && (strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "403")) {
 				_ = login(client, a.Config)
 			}
@@ -306,6 +417,8 @@ func (a *App) trackTorrent(hash string) {
 			log.Printf("[%q] Torrent removed. Stopping.", hash)
 			return
 		}
+
+		health.recordSuccess(a.Config)
 
 		pct := int(t.Progress * 100)
 

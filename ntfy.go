@@ -151,3 +151,7 @@ func sendNtfy(cfg *Config, title, msg, tag, id, priority string) {
 		log.Printf("ntfy server returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 }
+
+func sendHealthAlert(cfg *Config, title, msg, tag, priority string) {
+	sendNtfy(cfg, title, msg, tag, "qbit-health-alert", priority)
+}
