@@ -6,6 +6,7 @@
     "mergeConfidence:all-badges",
     "helpers:pinGitHubActionDigests"
   ],
+  "minimumReleaseAge": "3 days",
   "dependencyDashboard": true,
   "timezone": "Europe/Chisinau",
   "rebaseWhen": "behind-base-branch",
