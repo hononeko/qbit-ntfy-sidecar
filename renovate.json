@@ -7,7 +7,6 @@
     "helpers:pinGitHubActionDigests"
   ],
   "minimumReleaseAge": "3 days",
-  "internalChecksFilter": "strict",
   "dependencyDashboard": true,
   "timezone": "Europe/Chisinau",
   "rebaseWhen": "behind-base-branch",
