@@ -3,8 +3,12 @@
   "extends": [
     "config:recommended",
     ":semanticCommits",
+    ":semanticCommitTypeAll(chore)",
     "mergeConfidence:all-badges",
     "helpers:pinGitHubActionDigests"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
   ],
   "minimumReleaseAge": "3 days",
   "dependencyDashboard": true,
