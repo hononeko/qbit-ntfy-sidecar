@@ -57,7 +57,7 @@ jobs:
       # NTFY_TOPIC is the only required setting. There's no health endpoint, but /track answers 403 until
       # ALLOWED_SUBNETS admits the caller, which proves the server and its IP filter are up.
       - name: Smoke test
-        uses: hononeko/actions/smoke-test@3898710c9118a72c6d5a7fcedeaea0156469abd8 # v1.3.0
+        uses: hononeko/actions/smoke-test@4acae0f4c94e2171ad3473e6c080a96e3e6c4be9 # v1.3.1
         with:
           image: smoke:${{ matrix.arch }}
           port: "9090"
