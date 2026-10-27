@@ -38,6 +38,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           ref: ${{ inputs.ref }}
 
       - name: Set up Docker Buildx
@@ -57,7 +58,7 @@ jobs:
       # NTFY_TOPIC is the only required setting. There's no health endpoint, but /track answers 403 until
       # ALLOWED_SUBNETS admits the caller, which proves the server and its IP filter are up.
       - name: Smoke test
-        uses: hononeko/actions/smoke-test@e1fdec215f80fc9a1574c61b15303f6789d09b7c # v1.4.7
+        uses: hononeko/actions/smoke-test@v1
         with:
           image: smoke:${{ matrix.arch }}
           port: "9090"
