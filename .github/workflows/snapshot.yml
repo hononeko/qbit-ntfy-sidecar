@@ -55,7 +55,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish multi-arch snapshot
-        uses: hononeko/actions/publish-image@e1fdec215f80fc9a1574c61b15303f6789d09b7c # v1.4.7
+        uses: hononeko/actions/publish-image@82e06071aa2d62f9ed1776639e436238cd66666a # v1.6.0
         with:
           image: ghcr.io/${{ github.repository_owner }}/qbit-ntfy-sidecar
           tags: |
