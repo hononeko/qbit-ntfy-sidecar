@@ -49,8 +49,7 @@ jobs:
         with:
           platforms: linux/${{ matrix.arch }}
           tags: smoke:${{ matrix.arch }}
-          cache-from: type=gha,scope=image-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+          cache-scope: image-${{ matrix.arch }}
 
       # NTFY_TOPIC is the only required setting. There's no health endpoint, but /track answers 403 until
       # ALLOWED_SUBNETS admits the caller, which proves the server and its IP filter are up.
@@ -80,5 +79,6 @@ jobs:
           image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
           platforms: linux/${{ matrix.arch }}
           push: "true"
-          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-scope: image-${{ matrix.arch }}
+          cache-write: "false"
           digest-artifact: digests-${{ matrix.arch }}
